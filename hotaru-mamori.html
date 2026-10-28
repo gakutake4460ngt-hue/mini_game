@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ほたる守り</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Yuji+Syuku&family=Klee+One:wght@400;600&display=swap">
+<style>
+/* 一画面の夜の草むら。HUD は上端に薄く、操作は画面全体。単一のダークな世界観で固定 */
+:root{
+  --night:#0a0f1f;
+  --night-2:#141b33;
+  --ink:#e9e4d0;
+  --ink-dim:#9a9bb0;
+  --firefly:#e6f46a;
+  --lantern:#ffc46b;
+  --shadow-rim:#8a6fd1;
+  --display:"Yuji Syuku","Hiragino Mincho ProN","Yu Mincho",serif;
+  --body:"Klee One","Hiragino Maru Gothic ProN","Yu Gothic",sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--night);color:var(--ink);font-family:var(--body);overflow:hidden}
+#stage{position:relative;height:100%;touch-action:none;user-select:none;-webkit-user-select:none;cursor:none}
+#cv{position:absolute;inset:0;width:100%;height:100%;display:block}
+.hud{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;
+  padding-top:12px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));pointer-events:none}
+.stat{display:flex;flex-direction:column;gap:2px}
+.stat .lbl{font-size:11px;letter-spacing:.12em;color:var(--ink-dim)}
+.stat .val{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1}
+.stat.right{align-items:flex-end}
+#combo{color:var(--firefly);font-size:15px;min-height:1.2em;transition:transform .15s}
+.timebar{position:absolute;left:0;right:0;top:0;height:3px;background:color-mix(in srgb,var(--ink) 10%,transparent)}
+.timebar i{display:block;height:100%;width:100%;background:var(--lantern);transform-origin:left;box-shadow:0 0 8px var(--lantern)}
+#flashBtn{position:absolute;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));
+  width:68px;height:68px;border-radius:50%;border:1px solid color-mix(in srgb,var(--lantern) 60%,transparent);
+  background:color-mix(in srgb,var(--lantern) 14%,transparent);color:var(--lantern);font-family:var(--body);font-size:13px;font-weight:600;cursor:pointer}
+#flashBtn:disabled{opacity:.35}
+#flashBtn:focus-visible,.btn:focus-visible{outline:2px solid var(--firefly);outline-offset:3px}
+.overlay{position:absolute;inset:0;display:grid;place-items:center;background:color-mix(in srgb,var(--night) 72%,transparent);cursor:default;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.card{max-width:30rem;display:flex;flex-direction:column;gap:18px;text-align:left}
+.card h1{font-family:var(--display);font-weight:400;font-size:clamp(44px,11vw,76px);line-height:1;margin:0;letter-spacing:.04em;
+  color:var(--firefly);text-shadow:0 0 24px color-mix(in srgb,var(--firefly) 55%,transparent);text-wrap:balance}
+.card p{margin:0;line-height:1.8;color:var(--ink)}
+.rules{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0;font-size:14px;line-height:1.6}
+.rules dt{color:var(--lantern);font-weight:600}
+.rules dd{margin:0;color:var(--ink);min-width:0}
+.btn{align-self:flex-start;font-family:var(--body);font-weight:600;font-size:17px;padding:12px 28px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--lantern);background:var(--lantern);color:var(--night)}
+.result{font-family:var(--display);font-size:clamp(56px,16vw,96px);line-height:1;color:var(--firefly);font-variant-numeric:tabular-nums}
+.rank{font-size:20px;color:var(--lantern)}
+.small{font-size:13px;color:var(--ink-dim)}
+@media (hover:hover) and (pointer:fine){#flashBtn{display:none}}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="cv"></canvas>
+  <div class="timebar"><i id="timeFill"></i></div>
+  <div class="hud">
+    <div class="stat"><span class="lbl">びんの中</span><span class="val" id="score">0</span><span id="combo"></span></div>
+    <div class="stat right"><span class="lbl">のこり</span><span class="val" id="time">90</span><span class="lbl" id="best">さいこう 0</span></div>
+  </div>
+  <button id="flashBtn" type="button" disabled>光る</button>
+
+  <div class="overlay" id="startScreen">
+    <div class="card">
+      <h1>ほたる守り</h1>
+      <p>夏の夜、草むらに闇が出ます。ちょうちんでほたるを集めて、びんに連れていきましょう。</p>
+      <dl class="rules">
+        <dt>動かす</dt><dd>マウスか指でちょうちんを動かすと、近くのほたるがついてきます</dd>
+        <dt>びん</dt><dd>群れごとびんに入れると連続ボーナス。びんは時々ひっこします</dd>
+        <dt>闇</dt><dd>ほたるを食べます。クリック・スペース・「光る」ボタンで追い払えます</dd>
+      </dl>
+      <button class="btn" id="startBtn" type="button">はじめる</button>
+      <span class="small">制限時間 90 秒 ・ 音が出ます</span>
+    </div>
+  </div>
+
+  <div class="overlay" id="endScreen" hidden>
+    <div class="card">
+      <span class="small">今夜つかまえたほたる</span>
+      <div class="result" id="finalScore">0</div>
+      <div class="rank" id="rank"></div>
+      <p class="small" id="endNote"></p>
+      <button class="btn" id="againBtn" type="button">もう一晩</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+const stage = document.getElementById('stage');
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+const css = getComputedStyle(document.documentElement);
+const C = {
+  night: css.getPropertyValue('--night').trim(), night2: css.getPropertyValue('--night-2').trim(),
+  fly: css.getPropertyValue('--firefly').trim(), lantern: css.getPropertyValue('--lantern').trim(),
+  rim: css.getPropertyValue('--shadow-rim').trim(), ink: css.getPropertyValue('--ink').trim()
+};
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const GAME_TIME = 90, LURE_R = 115, MAX_FLIES = 46;
+
+let W = 0, H = 0, bg = null, stars = [];
+function resize() {
+  const dpr = Math.min(2, devicePixelRatio || 1);
+  W = stage.clientWidth; H = stage.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  buildBackground(dpr);
+  if (jar) clampJar();
+}
+function buildBackground(dpr) {
+  bg = document.createElement('canvas');
+  bg.width = W * dpr; bg.height = H * dpr;
+  const b = bg.getContext('2d'); b.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const g = b.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, C.night2); g.addColorStop(1, C.night);
+  b.fillStyle = g; b.fillRect(0, 0, W, H);
+  stars = Array.from({length: Math.round(W * H / 9000)}, () => ({x: Math.random() * W, y: Math.random() * H * .6, s: Math.random() * 1.2 + .3, p: Math.random() * 6}));
+  // 草のシルエット
+  b.fillStyle = '#05080f';
+  for (let layer = 0; layer < 2; layer++) {
+    b.globalAlpha = layer ? 1 : .55;
+    for (let x = -10; x < W + 10; x += 4 + Math.random() * 5) {
+      const h = (layer ? 30 : 55) + Math.random() * (layer ? 50 : 70);
+      const lean = (Math.random() - .5) * 26;
+      b.beginPath(); b.moveTo(x - 3, H); b.quadraticCurveTo(x + lean * .3, H - h * .6, x + lean, H - h); b.quadraticCurveTo(x + lean * .3 + 2, H - h * .6, x + 3, H); b.fill();
+    }
+  }
+  b.globalAlpha = 1;
+}
+
+// ---- 状態 ----
+let flies, shadows, parts, texts, jar, lantern, score, timeLeft, combo, comboT, flashCd, flashes, spawnT, shadowT, running = false, best = 0, eaten;
+try { best = +localStorage.getItem('hotaru-best') || 0; } catch (e) {}
+$('best').textContent = 'さいこう ' + best;
+
+const pointer = {x: 0, y: 0, active: false};
+function reset() {
+  flies = []; shadows = []; parts = []; texts = []; flashes = [];
+  score = 0; eaten = 0; timeLeft = GAME_TIME; combo = 0; comboT = 0; flashCd = 0; spawnT = 0; shadowT = 14;
+  lantern = {x: W / 2, y: H / 2};
+  jar = {x: W * .5, y: H * .72, tx: W * .5, ty: H * .72, r: 38, moveT: 20, warn: 0, glow: 0};
+  clampJar();
+  for (let i = 0; i < 18; i++) spawnFly(true);
+  spawnShadow();
+}
+function clampJar() {
+  const m = 70;
+  jar.tx = Math.min(W - m, Math.max(m, jar.tx)); jar.ty = Math.min(H - m, Math.max(m + 40, jar.ty));
+}
+function spawnFly(anywhere) {
+  let x, y, tries = 0;
+  do { x = 30 + Math.random() * (W - 60); y = 70 + Math.random() * (H - 110); tries++; }
+  while (tries < 20 && (Math.hypot(x - jar.x, y - jar.y) < 120 || (!anywhere && Math.hypot(x - lantern.x, y - lantern.y) < LURE_R * 1.3)));
+  const a = Math.random() * 6.28;
+  flies.push({x, y, vx: Math.cos(a) * 20, vy: Math.sin(a) * 20, ph: Math.random() * 6.28, wa: a, born: 0});
+}
+function spawnShadow() {
+  const side = Math.floor(Math.random() * 4);
+  const x = side === 0 ? -40 : side === 1 ? W + 40 : Math.random() * W;
+  const y = side === 2 ? -40 : side === 3 ? H + 40 : Math.random() * H;
+  shadows.push({x, y, vx: 0, vy: 0, r: 22, scared: 0, wob: Math.random() * 6.28});
+}
+
+// ---- 音 ----
+let ac = null;
+const PENTA = [523.25, 587.33, 659.25, 783.99, 880, 1046.5, 1174.66, 1318.5, 1568];
+function tone(freq, dur, type = 'sine', vol = .12, slide = 0) {
+  if (!ac) return;
+  const t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t);
+  if (slide) o.frequency.exponentialRampToValueAtTime(freq * slide, t + dur);
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .01); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur + .02);
+}
+
+// ---- 操作 ----
+function setPointer(e) {
+  const r = stage.getBoundingClientRect();
+  pointer.x = e.clientX - r.left;
+  pointer.y = e.clientY - r.top - (e.pointerType === 'touch' ? 46 : 0); // 指で隠れないよう少し上に
+  pointer.active = true;
+}
+stage.addEventListener('pointermove', setPointer);
+stage.addEventListener('pointerdown', e => {
+  if (e.target.closest('button,.overlay')) return;
+  setPointer(e);
+  if (e.pointerType === 'mouse') flash();
+});
+addEventListener('keydown', e => { if (e.code === 'Space' && running) { e.preventDefault(); flash(); } });
+$('flashBtn').addEventListener('pointerdown', e => { e.stopPropagation(); flash(); });
+
+function flash() {
+  if (!running || flashCd > 0) return;
+  flashCd = 4;
+  flashes.push({x: lantern.x, y: lantern.y, t: 0});
+  tone(330, .5, 'triangle', .1, 2.4);
+  for (const s of shadows) {
+    const dx = s.x - lantern.x, dy = s.y - lantern.y, d = Math.hypot(dx, dy) || 1;
+    if (d < 260) { s.scared = 2.2; s.vx += dx / d * 420; s.vy += dy / d * 420; }
+  }
+}
+
+// ---- 更新 ----
+function update(dt) {
+  timeLeft -= dt;
+  if (timeLeft <= 0) { timeLeft = 0; endGame(); return; }
+  flashCd = Math.max(0, flashCd - dt);
+  if (comboT > 0) { comboT -= dt; if (comboT <= 0) combo = 0; }
+
+  const k = 1 - Math.pow(.0005, dt);
+  lantern.x += ((pointer.active ? pointer.x : W / 2) - lantern.x) * k;
+  lantern.y += ((pointer.active ? pointer.y : H / 2) - lantern.y) * k;
+
+  // びんのひっこし
+  jar.moveT -= dt;
+  jar.warn = jar.moveT < 2.5 ? 1 : 0;
+  if (jar.moveT <= 0) {
+    jar.moveT = 16 + Math.random() * 6;
+    let tx, ty, n = 0;
+    do { tx = Math.random() * W; ty = Math.random() * H; n++; } while (n < 20 && Math.hypot(tx - jar.x, ty - jar.y) < Math.min(W, H) * .4);
+    jar.tx = tx; jar.ty = ty; clampJar();
+    tone(196, .35, 'sine', .08, 1.5);
+  }
+  jar.x += (jar.tx - jar.x) * (1 - Math.pow(.05, dt));
+  jar.y += (jar.ty - jar.y) * (1 - Math.pow(.05, dt));
+  jar.glow *= Math.pow(.4, dt);
+
+  // 出現
+  const elapsed = GAME_TIME - timeLeft;
+  spawnT -= dt;
+  if (spawnT <= 0 && flies.length < MAX_FLIES) { spawnFly(false); spawnT = .55; }
+  shadowT -= dt;
+  if (shadowT <= 0 && shadows.length < 2 + Math.floor(elapsed / 15)) { spawnShadow(); shadowT = 9; }
+
+  const damp = Math.pow(.12, dt);
+  for (let i = flies.length - 1; i >= 0; i--) {
+    const f = flies[i];
+    f.ph += dt * (3 + (i % 5) * .4); f.born = Math.min(1, f.born + dt * 1.5);
+    const dx = lantern.x - f.x, dy = lantern.y - f.y, d = Math.hypot(dx, dy) || 1;
+    f.lured = d < LURE_R;
+    if (f.lured) {
+      const pull = d > 34 ? 520 : -120;
+      f.vx += (dx / d * pull - dy / d * 160) * dt;
+      f.vy += (dy / d * pull + dx / d * 160) * dt;
+      f.vx *= damp; f.vy *= damp;
+    } else {
+      f.wa += (Math.random() - .5) * 4 * dt;
+      f.vx += (Math.cos(f.wa) * 28 - f.vx) * dt * 1.5;
+      f.vy += (Math.sin(f.wa) * 28 - f.vy) * dt * 1.5;
+      // 近くの闇から少し逃げる
+      for (const s of shadows) {
+        const sx = f.x - s.x, sy = f.y - s.y, sd = Math.hypot(sx, sy);
+        if (sd < 90 && sd > 0) { f.vx += sx / sd * 60 * dt; f.vy += sy / sd * 60 * dt; }
+      }
+    }
+    f.x += f.vx * dt; f.y += f.vy * dt;
+    if (f.x < 8) { f.x = 8; f.vx = Math.abs(f.vx); f.wa = 0; }
+    if (f.x > W - 8) { f.x = W - 8; f.vx = -Math.abs(f.vx); f.wa = Math.PI; }
+    if (f.y < 50) { f.y = 50; f.vy = Math.abs(f.vy); f.wa = Math.PI / 2; }
+    if (f.y > H - 8) { f.y = H - 8; f.vy = -Math.abs(f.vy); f.wa = -Math.PI / 2; }
+
+    if (Math.hypot(f.x - jar.x, f.y - jar.y) < jar.r - 6) { capture(f); flies.splice(i, 1); }
+  }
+
+  for (const s of shadows) {
+    s.wob += dt * 2;
+    s.scared = Math.max(0, s.scared - dt);
+    const ldx = s.x - lantern.x, ldy = s.y - lantern.y, ld = Math.hypot(ldx, ldy) || 1;
+    if (s.scared > 0) {
+      s.vx += ldx / ld * 120 * dt; s.vy += ldy / ld * 120 * dt;
+    } else {
+      let tgt = null, td = 1e9;
+      for (const f of flies) { const d = Math.hypot(f.x - s.x, f.y - s.y); if (d < td) { td = d; tgt = f; } }
+      const speed = 70 + elapsed * .9;
+      if (tgt) {
+        s.vx += ((tgt.x - s.x) / td * speed - s.vx) * dt * 1.2;
+        s.vy += ((tgt.y - s.y) / td * speed - s.vy) * dt * 1.2;
+      }
+      // ちょうちんの光は闇を少しだけ押し返す
+      if (ld < LURE_R) { s.vx += ldx / ld * 90 * dt; s.vy += ldy / ld * 90 * dt; }
+    }
+    s.vx *= Math.pow(.5, dt); s.vy *= Math.pow(.5, dt);
+    s.x += s.vx * dt; s.y += s.vy * dt;
+    if (s.scared <= 0) {
+      for (let i = flies.length - 1; i >= 0; i--) {
+        const f = flies[i];
+        if (f.born >= 1 && Math.hypot(f.x - s.x, f.y - s.y) < s.r * .8) {
+          eaten++;
+          for (let p = 0; p < 6; p++) parts.push(particle(f.x, f.y, C.rim, 60));
+          flies.splice(i, 1); tone(140, .25, 'triangle', .07, .5);
+          s.r = Math.min(40, s.r + 1.2);
+        }
+      }
+    }
+  }
+
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i]; p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= .96; p.vy *= .96;
+    if (p.t > p.life) parts.splice(i, 1);
+  }
+  for (let i = texts.length - 1; i >= 0; i--) { const t = texts[i]; t.t += dt; t.y -= 30 * dt; if (t.t > 1) texts.splice(i, 1); }
+  for (let i = flashes.length - 1; i >= 0; i--) { flashes[i].t += dt; if (flashes[i].t > .6) flashes.splice(i, 1); }
+}
+function particle(x, y, color, sp) {
+  const a = Math.random() * 6.28, v = Math.random() * sp;
+  return {x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0, life: .5 + Math.random() * .5, color};
+}
+function capture(f) {
+  combo = comboT > 0 ? Math.min(combo + 1, 9) : 1;
+  comboT = 1.1;
+  score += combo;
+  jar.glow = Math.min(1, jar.glow + .35);
+  tone(PENTA[combo - 1], .6, 'sine', .1);
+  if (!reduced) for (let p = 0; p < 8; p++) parts.push(particle(f.x, f.y, C.fly, 90));
+  texts.push({x: f.x, y: f.y - 10, t: 0, s: '+' + combo});
+}
+
+// ---- 描画 ----
+function draw(now) {
+  ctx.drawImage(bg, 0, 0, W, H);
+  const tt = now / 1000;
+  ctx.fillStyle = C.ink;
+  for (const s of stars) { ctx.globalAlpha = .25 + .25 * Math.sin(tt + s.p); ctx.fillRect(s.x, s.y, s.s, s.s); }
+  ctx.globalAlpha = 1;
+  if (!jar) return;
+
+  ctx.globalCompositeOperation = 'lighter';
+  // ちょうちんの光
+  if (running) {
+    const g = ctx.createRadialGradient(lantern.x, lantern.y, 0, lantern.x, lantern.y, LURE_R * 1.25);
+    g.addColorStop(0, 'rgba(255,196,107,.38)'); g.addColorStop(.55, 'rgba(255,196,107,.10)'); g.addColorStop(1, 'rgba(255,196,107,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(lantern.x, lantern.y, LURE_R * 1.25, 0, 6.29); ctx.fill();
+  }
+  // びんの光
+  const jg = ctx.createRadialGradient(jar.x, jar.y, 0, jar.x, jar.y, jar.r * 2.2);
+  const ja = .12 + Math.min(score, 120) / 120 * .25 + jar.glow * .35;
+  jg.addColorStop(0, `rgba(230,244,106,${ja})`); jg.addColorStop(1, 'rgba(230,244,106,0)');
+  ctx.fillStyle = jg; ctx.beginPath(); ctx.arc(jar.x, jar.y, jar.r * 2.2, 0, 6.29); ctx.fill();
+  // ほたる
+  for (const f of flies) {
+    const blink = .45 + .55 * Math.max(0, Math.sin(f.ph));
+    const a = blink * f.born;
+    const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, 14);
+    g.addColorStop(0, `rgba(230,244,106,${.9 * a})`); g.addColorStop(.25, `rgba(200,240,90,${.35 * a})`); g.addColorStop(1, 'rgba(200,240,90,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(f.x, f.y, 14, 0, 6.29); ctx.fill();
+  }
+  for (const p of parts) {
+    ctx.globalAlpha = 1 - p.t / p.life; ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 2, 0, 6.29); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  for (const fl of flashes) {
+    const r = 30 + fl.t * 420, a = 1 - fl.t / .6;
+    ctx.strokeStyle = `rgba(255,220,150,${a * .8})`; ctx.lineWidth = 6 * a + 1;
+    ctx.beginPath(); ctx.arc(fl.x, fl.y, r, 0, 6.29); ctx.stroke();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+
+  // びん本体
+  ctx.save(); ctx.translate(jar.x, jar.y);
+  const warnPulse = jar.warn ? .5 + .5 * Math.sin(tt * 14) : 0;
+  ctx.strokeStyle = jar.warn ? `rgba(255,196,107,${.5 + warnPulse * .5})` : 'rgba(233,228,208,.55)';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.roundRect(-jar.r * .78, -jar.r * .85, jar.r * 1.56, jar.r * 1.8, 12); ctx.stroke();
+  ctx.fillStyle = 'rgba(233,228,208,.06)'; ctx.fill();
+  ctx.fillStyle = 'rgba(233,228,208,.5)'; ctx.fillRect(-jar.r * .5, -jar.r * 1.05, jar.r, 6);
+  ctx.fillStyle = 'rgba(233,228,208,.18)'; ctx.fillRect(-jar.r * .55, -jar.r * .6, 4, jar.r * 1.1);
+  // びんの中のほたる (飾り)
+  const inside = Math.min(score, 30);
+  for (let i = 0; i < inside; i++) {
+    const a = .4 + .6 * Math.max(0, Math.sin(tt * 3 + i * 1.7));
+    ctx.fillStyle = `rgba(230,244,106,${a})`;
+    ctx.beginPath(); ctx.arc(Math.sin(i * 12.9) * jar.r * .55, Math.cos(i * 7.3) * jar.r * .6 + Math.sin(tt + i) * 3, 1.8, 0, 6.29); ctx.fill();
+  }
+  ctx.restore();
+
+  // 闇
+  for (const s of shadows) {
+    const r = s.r * (1.6 + .1 * Math.sin(s.wob * 1.3));
+    const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, r);
+    g.addColorStop(0, 'rgba(2,3,8,.95)'); g.addColorStop(.55, 'rgba(10,6,24,.75)'); g.addColorStop(1, 'rgba(10,6,24,0)');
+    ctx.fillStyle = g; ctx.beginPath();
+    for (let a = 0; a <= 6.3; a += .35) {
+      const rr = r * (.85 + .15 * Math.sin(a * 3 + s.wob * 2));
+      const px = s.x + Math.cos(a) * rr, py = s.y + Math.sin(a) * rr;
+      a === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    }
+    ctx.fill();
+    const look = Math.atan2(s.vy, s.vx), ex = Math.cos(look) * 4, ey = Math.sin(look) * 4;
+    ctx.fillStyle = s.scared > 0 ? 'rgba(138,111,209,.35)' : C.rim;
+    const blink = Math.sin(s.wob * .7) > .97 ? .2 : 1;
+    for (const side of [-1, 1]) {
+      ctx.beginPath(); ctx.ellipse(s.x + ex + side * 6, s.y + ey - 3, 2.6, 3.4 * blink, 0, 0, 6.29); ctx.fill();
+    }
+  }
+
+  // ちょうちん
+  if (running) {
+    ctx.save(); ctx.translate(lantern.x, lantern.y);
+    ctx.strokeStyle = 'rgba(233,228,208,.5)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, -14); ctx.lineTo(0, -24); ctx.stroke();
+    ctx.fillStyle = C.lantern; ctx.shadowColor = C.lantern; ctx.shadowBlur = 18;
+    ctx.beginPath(); ctx.ellipse(0, 0, 9, 13, 0, 0, 6.29); ctx.fill();
+    ctx.shadowBlur = 0; ctx.strokeStyle = 'rgba(120,60,20,.5)';
+    for (const yy of [-6, 0, 6]) { ctx.beginPath(); ctx.moveTo(-8, yy); ctx.lineTo(8, yy); ctx.stroke(); }
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(255,196,107,.12)'; ctx.setLineDash([3, 6]);
+    ctx.beginPath(); ctx.arc(lantern.x, lantern.y, LURE_R, 0, 6.29); ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  ctx.font = '600 18px ' + getComputedStyle(document.body).fontFamily;
+  ctx.textAlign = 'center';
+  for (const t of texts) { ctx.globalAlpha = 1 - t.t; ctx.fillStyle = C.fly; ctx.fillText(t.s, t.x, t.y); }
+  ctx.globalAlpha = 1;
+}
+
+function hud() {
+  $('score').textContent = score;
+  $('time').textContent = Math.ceil(timeLeft);
+  $('timeFill').style.transform = `scaleX(${timeLeft / GAME_TIME})`;
+  $('combo').textContent = combo > 1 ? `れんぞく ×${combo}` : '';
+  const fb = $('flashBtn');
+  fb.disabled = flashCd > 0;
+  fb.textContent = flashCd > 0 ? Math.ceil(flashCd) : '光る';
+}
+
+// ---- 流れ ----
+function startGame() {
+  try { if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)(); ac.resume(); } catch (e) {}
+  reset();
+  running = true;
+  $('startScreen').hidden = true; $('endScreen').hidden = true;
+  stage.focus?.();
+}
+function endGame() {
+  running = false;
+  const isBest = score > best;
+  if (isBest) { best = score; try { localStorage.setItem('hotaru-best', best); } catch (e) {} }
+  $('best').textContent = 'さいこう ' + best;
+  $('finalScore').textContent = score;
+  const ranks = [[0, 'ほたる見習い'], [40, '草むらの案内人'], [90, '夜道のちょうちん持ち'], [150, '川べりの名人'], [220, 'ほたるの守り神']];
+  $('rank').textContent = ranks.filter(r => score >= r[0]).pop()[1];
+  $('endNote').textContent = (isBest ? '自己ベスト更新。' : `自己ベストは ${best}。`) + ` 闇に食べられたほたる ${eaten} 匹。`;
+  $('endScreen').hidden = false;
+  [0, 2, 4].forEach((n, i) => setTimeout(() => tone(PENTA[n], .8, 'sine', .09), i * 140));
+}
+$('startBtn').addEventListener('click', startGame);
+$('againBtn').addEventListener('click', startGame);
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  if (running) { update(dt); hud(); }
+  draw(now);
+  requestAnimationFrame(loop);
+}
+addEventListener('resize', resize);
+resize();
+reset(); // 開始画面の背後でも草むらが動いて見えるように
+running = false;
+(function idle() { // 待機中はほたるだけゆっくり漂わせる
+  if (!running && !$('startScreen').hidden) {
+    for (const f of flies) { f.ph += .05; f.wa += (Math.random() - .5) * .1; f.x += Math.cos(f.wa) * .4; f.y += Math.sin(f.wa) * .4; f.born = 1;
+      f.x = Math.min(W - 8, Math.max(8, f.x)); f.y = Math.min(H - 8, Math.max(50, f.y)); }
+    shadows.length = 0;
+  }
+  requestAnimationFrame(idle);
+})();
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>割り算キャッチャー</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Klee+One:wght@400;600&family=Zen+Kaku+Gothic+New:wght@400;700&family=M+PLUS+1+Code:wght@500;700&display=swap">
+<style>
+  /* Layout: one-screen app. Light = graph-paper notebook with pencil and red pen; dark = chalkboard. */
+  :root {
+    --paper: #eef3f2;
+    --paper2: #f8fbfa;
+    --grid: #d3e3e1;
+    --line: #b7cdca;
+    --ink: #263238;
+    --muted: #5f7277;
+    --red: #cf3047;
+    --hl: #e8c22e;
+    --f-hand: "Klee One", "Hiragino Maru Gothic ProN", "Yu Gothic", serif;
+    --f-body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+    --f-num: "M PLUS 1 Code", ui-monospace, "SFMono-Regular", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #17302a; --paper2: #1d3a33; --grid: #28493f; --line: #3a6155;
+      --ink: #eef2ea; --muted: #a9bdb4; --red: #ff8d8d; --hl: #f3d873;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #17302a; --paper2: #1d3a33; --grid: #28493f; --line: #3a6155;
+    --ink: #eef2ea; --muted: #a9bdb4; --red: #ff8d8d; --hl: #f3d873;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body { background: var(--paper); color: var(--ink); font-family: var(--f-body); overflow: hidden; }
+  .app {
+    height: 100%; max-width: 760px; margin: 0 auto; box-sizing: border-box;
+    display: flex; flex-direction: column; gap: 10px;
+    padding-block: 12px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  h1 { font-family: var(--f-hand); font-weight: 600; font-size: 1.45rem; margin: 0; letter-spacing: .02em; }
+  h1 em { font-style: normal; color: var(--red); }
+  .hud { display: flex; gap: 16px; font-size: .78rem; color: var(--muted); }
+  .hud b { font-family: var(--f-num); font-variant-numeric: tabular-nums; font-size: 1.05rem; color: var(--ink); margin-left: 4px; }
+  .hud .lives b { color: var(--red); letter-spacing: .1em; }
+  .board {
+    display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; align-items: end;
+    border-bottom: 2px solid var(--ink); padding-bottom: 8px;
+  }
+  .eq { font-family: var(--f-hand); font-size: clamp(1.6rem, 6vw, 2.3rem); line-height: 1.4; display: flex; align-items: center; flex-wrap: wrap; min-width: 0; }
+  .frac { display: inline-flex; flex-direction: column; align-items: center; font-size: .62em; line-height: 1.05; margin-right: .3em; }
+  .frac span:first-child { border-bottom: 2px solid currentColor; padding: 0 .2em; }
+  .digit { position: relative; display: inline-block; }
+  .dot::before {
+    content: ""; position: absolute; top: .02em; left: 50%; width: .17em; height: .17em;
+    border-radius: 50%; background: var(--red); transform: translateX(-50%);
+  }
+  .slot { display: inline-block; min-width: .7em; text-align: center; color: var(--muted); border-bottom: 3px solid var(--hl); animation: blink 1s steps(2) infinite; }
+  .end { color: var(--red); font-size: .55em; margin-left: .5em; }
+  @keyframes blink { 50% { border-bottom-color: transparent; } }
+  .rem { font-size: .78rem; color: var(--muted); text-align: right; }
+  .rem .now { font-family: var(--f-hand); font-size: 1.15rem; color: var(--ink); }
+  .hist { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; font-size: .72rem; color: var(--muted); min-height: 1.6em; }
+  .hist i { font-style: normal; font-family: var(--f-num); font-variant-numeric: tabular-nums; padding: 0 6px; border: 1px solid var(--line); border-radius: 3px; color: var(--ink); }
+  .hist i.cur { background: var(--hl); color: #263238; border-color: var(--hl); }
+  .hist i.rep { border-color: var(--red); color: var(--red); }
+  .stage {
+    position: relative; flex: 1; min-height: 300px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden;
+    background-color: var(--paper2);
+    background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .stage.shake { animation: shake .3s; }
+  @keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+  .overlay { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, var(--paper2) 82%, transparent); }
+  .card { max-width: 30rem; display: flex; flex-direction: column; gap: 12px; font-size: .92rem; line-height: 1.7; }
+  .card h2 { font-family: var(--f-hand); font-weight: 600; font-size: 1.5rem; margin: 0; text-wrap: balance; }
+  .card ol { margin: 0; padding-left: 1.3em; }
+  .card .tok { font-family: var(--f-hand); color: var(--red); font-weight: 600; }
+  .card .big { font-family: var(--f-num); font-size: 2.2rem; font-weight: 700; }
+  .log { font-family: var(--f-hand); font-size: 1.1rem; display: flex; flex-direction: column; gap: 2px; }
+  button {
+    align-self: flex-start; font: 700 1rem var(--f-body); color: var(--paper2); background: var(--ink);
+    border: 0; border-radius: 4px; padding: 10px 22px; cursor: pointer;
+  }
+  button:hover { background: var(--red); }
+  button:focus-visible { outline: 3px solid var(--hl); outline-offset: 2px; }
+  .keys { font-size: .72rem; color: var(--muted); }
+  @media (prefers-reduced-motion: reduce) { .stage.shake, .slot { animation: none; } }
+</style>
+
+<div class="app">
+  <header>
+    <h1>割り算<em>キャッチャー</em></h1>
+    <div class="hud">
+      <span>スコア<b id="score">0</b></span>
+      <span>問題<b id="level">1</b></span>
+      <span class="lives">のこり<b id="lives">♥♥♥</b></span>
+    </div>
+  </header>
+
+  <section class="board" aria-live="polite">
+    <div class="eq" id="eq"></div>
+    <div class="rem" id="rem"></div>
+    <div class="hist" id="hist"></div>
+  </section>
+
+  <div class="stage" id="stage">
+    <canvas id="cv" aria-label="落ちてくる数字を受け皿で受けるゲーム画面"></canvas>
+    <div class="overlay" id="overlay">
+      <div class="card" id="card">
+        <h2>筆算の次の一桁を、受け止めろ。</h2>
+        <ol>
+          <li>上の分数を小数にしていきます。<b>次に来る数字</b>を受け皿で受けてください。</li>
+          <li>割り切れたら <span class="tok">終</span> を受けます。</li>
+          <li>前と<b>同じあまり</b>が出たら、そこから先はくり返しです。<span class="tok">↻</span> を受けます。</li>
+          <li>まちがった数字を受けると ♥ が減ります。3 回で終わりです。</li>
+        </ol>
+        <button id="start" type="button">はじめる</button>
+        <div class="keys">← → か A D で移動。スマホは画面をなぞって移動。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const stage = $("#stage"), cv = $("#cv"), ctx = cv.getContext("2d");
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const rand = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+
+let W = 0, H = 0;
+const basket = { x: 0, y: 0, w: 90, h: 14, tx: null };
+const keys = { l: false, r: false };
+const S = { running: false, score: 0, best: 0, lives: 3, combo: 0, solved: 0, items: [], pops: [], spawnT: 0, sinceCorrect: 0, wait: 0, frac: null, log: [] };
+
+try { S.best = +localStorage.getItem("warizan-best") || 0; } catch (e) {}
+
+// --- 筆算 ---
+function expand(n, d) {
+  const seen = new Map(), digits = [], rems = [];
+  let r = n;
+  while (r !== 0 && !seen.has(r)) {
+    seen.set(r, digits.length);
+    rems.push(r);
+    r *= 10;
+    digits.push(Math.floor(r / d));
+    r %= d;
+  }
+  rems.push(r);
+  return { digits, rems, cycleStart: r === 0 ? -1 : seen.get(r) };
+}
+
+function newFraction() {
+  const lv = S.solved + 1;
+  const maxLen = Math.min(2 + lv, 8), minLen = lv >= 4 ? 3 : 1, maxD = Math.min(6 + lv * 3, 40);
+  const prev = S.frac;
+  let pick = null;
+  for (let i = 0; i < 300 && !pick; i++) {
+    let d = rand(2, maxD), n = rand(1, d - 1);
+    const g = gcd(n, d); n /= g; d /= g;
+    if (d < 2 || (prev && prev.n === n && prev.d === d)) continue;
+    const e = expand(n, d);
+    if (e.digits.length >= minLen && e.digits.length <= maxLen) pick = { n, d, ...e };
+  }
+  S.frac = { ...(pick || { n: 1, d: 3, ...expand(1, 3) }), pos: 0, done: false };
+  renderBoard();
+}
+
+const target = () => {
+  const f = S.frac;
+  return f.pos < f.digits.length ? String(f.digits[f.pos]) : f.cycleStart < 0 ? "終" : "↻";
+};
+
+function decimalHTML(f, upto) {
+  let h = "";
+  const cs = f.cycleStart, last = f.digits.length - 1;
+  for (let i = 0; i < upto; i++) {
+    const dot = f.done && cs >= 0 && (i === cs || i === last);
+    h += `<span class="digit${dot ? " dot" : ""}">${f.digits[i]}</span>`;
+  }
+  return h;
+}
+
+function renderBoard() {
+  const f = S.frac;
+  let h = `<span class="frac"><span>${f.n}</span><span>${f.d}</span></span>=&nbsp;0.` + decimalHTML(f, f.pos);
+  if (!f.done) h += `<span class="slot">?</span>`;
+  else h += `<span class="end">${f.cycleStart < 0 ? "割り切れた" : "くり返し"}</span>`;
+  $("#eq").innerHTML = h;
+
+  const r = f.rems[Math.min(f.pos, f.rems.length - 1)];
+  $("#rem").innerHTML = f.done ? "" : `いまのあまり <span class="now">${r}</span><br>${r * 10} ÷ ${f.d} は？`;
+
+  const shown = f.rems.slice(0, f.pos + 1);
+  const cur = shown.length - 1;
+  $("#hist").innerHTML = "あまりの記録" + shown.map((v, i) => {
+    const rep = i < cur && v === shown[cur] && v !== 0;
+    return `<i class="${i === cur ? "cur" : rep ? "rep" : ""}">${v}</i>`;
+  }).join("");
+  renderHud();
+}
+
+function renderHud() {
+  $("#score").textContent = S.score;
+  $("#level").textContent = S.solved + 1;
+  $("#lives").textContent = "♥".repeat(Math.max(S.lives, 0)) || "—";
+}
+
+// --- 描画まわり ---
+let col = {};
+function readColors() {
+  const cs = getComputedStyle(document.documentElement);
+  for (const k of ["ink", "red", "hl", "muted", "paper2", "line"]) col[k] = cs.getPropertyValue("--" + k).trim();
+}
+readColors();
+setInterval(readColors, 1000);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", readColors);
+
+function resize() {
+  const r = stage.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  W = r.width; H = r.height;
+  cv.width = W * dpr; cv.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  basket.w = Math.max(72, Math.min(116, W * 0.2));
+  basket.y = H - 40;
+  if (!basket.x) basket.x = W / 2;
+  basket.x = Math.min(Math.max(basket.x, basket.w / 2), W - basket.w / 2);
+}
+new ResizeObserver(resize).observe(stage);
+
+function spawn() {
+  const t = target();
+  let v;
+  if (S.sinceCorrect >= 3 || Math.random() < 0.34) { v = t; S.sinceCorrect = 0; }
+  else {
+    S.sinceCorrect++;
+    do v = Math.random() < 0.14 ? (Math.random() < 0.5 ? "終" : "↻") : String(rand(0, 9));
+    while (v === t);
+  }
+  const lv = S.solved + 1, scale = Math.max(H, 320) / 560;
+  const speed = (95 + lv * 12) * scale;
+  S.items.push({ v, x: rand(24, Math.max(25, W - 24)), y: -26, vy: speed * (0.8 + Math.random() * 0.4), r: 21, rot: (Math.random() - 0.5) * 0.35 });
+}
+
+function pop(text, x, y, color) { S.pops.push({ text, x, y, t: 0, color }); }
+
+function catchItem(it) {
+  const f = S.frac;
+  if (it.v === target()) {
+    S.combo++;
+    const pts = 10 * Math.min(S.combo, 5);
+    S.score += pts;
+    pop(`+${pts}`, it.x, basket.y - 24, col.ink);
+    if (f.pos < f.digits.length) { f.pos++; renderBoard(); return; }
+    const bonus = 30 + f.digits.length * 10;
+    S.score += bonus;
+    f.done = true;
+    S.solved++;
+    S.log.push(`${f.n}/${f.d} = 0.${decimalHTML(f, f.digits.length)}`);
+    pop(it.v === "終" ? `割り切れた！ +${bonus}` : `循環を発見！ +${bonus}`, W / 2, H / 2, col.red);
+    S.items = [];
+    S.wait = 1.3;
+    renderBoard();
+  } else {
+    S.combo = 0;
+    S.lives--;
+    pop("×", it.x, basket.y - 24, col.red);
+    renderHud();
+    if (!reduceMotion) { stage.classList.remove("shake"); void stage.offsetWidth; stage.classList.add("shake"); }
+    if (S.lives <= 0) gameOver();
+  }
+}
+
+function update(dt) {
+  const spd = Math.max(W, 300) * 1.1;
+  if (keys.l) basket.x -= spd * dt;
+  if (keys.r) basket.x += spd * dt;
+  if (basket.tx != null) basket.x += (basket.tx - basket.x) * Math.min(1, dt * 18);
+  basket.x = Math.min(Math.max(basket.x, basket.w / 2), W - basket.w / 2);
+
+  if (S.wait > 0) {
+    S.wait -= dt;
+    if (S.wait <= 0) newFraction();
+  } else {
+    S.spawnT -= dt;
+    if (S.spawnT <= 0) { spawn(); S.spawnT = Math.max(0.42, 0.95 - S.solved * 0.05); }
+  }
+
+  for (const it of S.items) {
+    it.y += it.vy * dt;
+    if (!it.gone && it.y + it.r >= basket.y && it.y - it.r <= basket.y + basket.h && Math.abs(it.x - basket.x) <= basket.w / 2 + it.r * 0.4) {
+      it.gone = true;
+      catchItem(it);
+      if (!S.running) return;
+    }
+  }
+  S.items = S.items.filter((it) => !it.gone && it.y - it.r < H);
+  for (const p of S.pops) p.t += dt;
+  S.pops = S.pops.filter((p) => p.t < 0.9);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (const it of S.items) {
+    const special = it.v === "終" || it.v === "↻";
+    ctx.save();
+    ctx.translate(it.x, it.y);
+    ctx.rotate(it.rot);
+    ctx.beginPath();
+    ctx.arc(0, 0, it.r, 0, Math.PI * 2);
+    ctx.fillStyle = col.paper2;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = special ? col.red : col.ink;
+    ctx.stroke();
+    ctx.fillStyle = special ? col.red : col.ink;
+    ctx.font = `600 ${special ? 22 : 26}px "Klee One", serif`;
+    ctx.fillText(it.v, 0, 2);
+    ctx.restore();
+  }
+
+  // 受け皿
+  const bx = basket.x - basket.w / 2, by = basket.y;
+  ctx.save();
+  ctx.globalAlpha = 0.55;
+  ctx.fillStyle = col.hl;
+  ctx.fillRect(bx, by, basket.w, basket.h);
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = col.ink;
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(bx - 4, by - 8);
+  ctx.lineTo(bx + 4, by + basket.h);
+  ctx.lineTo(bx + basket.w - 4, by + basket.h);
+  ctx.lineTo(bx + basket.w + 4, by - 8);
+  ctx.stroke();
+  if (S.running && S.frac && !S.frac.done) {
+    ctx.fillStyle = col.muted;
+    ctx.font = `500 12px "M PLUS 1 Code", monospace`;
+    ctx.fillText(S.combo > 1 ? `${S.combo} 連続` : "", basket.x, by + basket.h + 13);
+  }
+  ctx.restore();
+
+  for (const p of S.pops) {
+    ctx.globalAlpha = 1 - p.t / 0.9;
+    ctx.fillStyle = p.color;
+    ctx.font = `600 ${p.text.length > 3 ? 24 : 22}px "Klee One", serif`;
+    ctx.fillText(p.text, p.x, p.y - p.t * 40);
+  }
+  ctx.globalAlpha = 1;
+}
+
+let last = 0;
+function loop(t) {
+  const dt = Math.min(0.05, (t - last) / 1000 || 0);
+  last = t;
+  if (S.running && !document.hidden) update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// --- 進行 ---
+function start() {
+  Object.assign(S, { running: true, score: 0, lives: 3, combo: 0, solved: 0, items: [], pops: [], spawnT: 0.6, sinceCorrect: 0, wait: 0, log: [] });
+  $("#overlay").hidden = true;
+  newFraction();
+  cv.focus?.();
+}
+
+function gameOver() {
+  S.running = false;
+  S.items = [];
+  const newBest = S.score > S.best;
+  if (newBest) { S.best = S.score; try { localStorage.setItem("warizan-best", S.best); } catch (e) {} }
+  const f = S.frac;
+  $("#card").innerHTML = `
+    <h2>ゲームオーバー</h2>
+    <div><span class="big">${S.score}</span> 点${newBest ? "（自己ベスト更新）" : `（ベスト ${S.best} 点）`}</div>
+    <div>正解は <b>${target()}</b> でした。${f.n}/${f.d} = 0.${f.digits.join("")}${f.cycleStart >= 0 ? `…（${f.digits.slice(f.cycleStart).join("")} をくり返す）` : ""}</div>
+    ${S.log.length ? `<div>解いた分数 ${S.log.length} 問</div><div class="log">${S.log.slice(-5).map((s) => `<span>${s}</span>`).join("")}</div>` : ""}
+    <button id="start" type="button">もう一度</button>`;
+  $("#start").addEventListener("click", start);
+  $("#overlay").hidden = false;
+  $("#start").focus();
+}
+
+$("#start").addEventListener("click", start);
+
+addEventListener("keydown", (e) => {
+  if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") { keys.l = true; basket.tx = null; e.preventDefault(); }
+  if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") { keys.r = true; basket.tx = null; e.preventDefault(); }
+  if ((e.key === "Enter" || e.key === " ") && !S.running && document.activeElement?.id !== "start") { e.preventDefault(); start(); }
+});
+addEventListener("keyup", (e) => {
+  if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") keys.l = false;
+  if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") keys.r = false;
+});
+const aim = (e) => { basket.tx = e.clientX - stage.getBoundingClientRect().left; };
+cv.addEventListener("pointerdown", (e) => { aim(e); cv.setPointerCapture?.(e.pointerId); });
+cv.addEventListener("pointermove", (e) => { if (e.pointerType === "mouse" || e.buttons) aim(e); });
+
+window.claude?.hot?.snapshot?.(() => ({ best: S.best }));
+const boot = (data) => {
+  if (data && data.best > S.best) S.best = data.best;
+  resize();
+  S.frac = { n: 1, d: 7, ...expand(1, 7), pos: 3, done: false };
+  renderBoard();
+  for (let i = 0; i < 6; i++) S.items.push({ v: "0142857終↻"[rand(0, 8)], x: 30 + i * Math.max(40, (W - 60) / 5), y: 40 + (i % 3) * 70, vy: 0, r: 21, rot: (i % 2 ? 0.15 : -0.12) });
+  requestAnimationFrame(loop);
+};
+document.fonts?.ready.then(readColors);
+window.claude?.hot?.ready ? window.claude.hot.ready(boot) : boot(window.claude?.hot?.data ?? {});
+</script>
+
+</html>

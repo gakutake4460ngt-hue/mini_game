@@ -1,0 +1,569 @@
+<title>灯台守の夜</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@600;800&family=Zen+Kaku+Gothic+New:wght@400;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: one-screen game. A thin stat bar, a square night sea filling the rest, start/end cards floating over the sea. Single dark world by design. */
+:root {
+  --night: #07111c;
+  --panel: rgba(9, 24, 38, 0.9);
+  --ink: #dfe7ea;
+  --muted: #8299a8;
+  --lamp: #ffcf7a;
+  --alarm: #ff5d4d;
+  --line: rgba(223, 231, 234, 0.14);
+  --f-display: "Shippori Mincho B1", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --f-body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+  --f-num: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { background: var(--night); color: var(--ink); font-family: var(--f-body); overflow: hidden; }
+.app {
+  height: 100%; box-sizing: border-box; max-width: 980px; margin: 0 auto;
+  display: flex; flex-direction: column; gap: 10px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 12px;
+}
+header { display: flex; align-items: center; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; }
+h1 { font-family: var(--f-display); font-weight: 800; font-size: 1.35rem; letter-spacing: 0.12em; margin: 0; }
+h1 small { font-family: var(--f-body); font-weight: 400; font-size: 0.7rem; color: var(--muted); letter-spacing: 0.06em; margin-left: 8px; }
+.stats { display: flex; gap: 6px 18px; align-items: center; flex-wrap: wrap; font-size: 0.78rem; color: var(--muted); }
+.stat { display: flex; align-items: baseline; gap: 6px; }
+.stat b { font-family: var(--f-num); font-weight: 500; font-size: 1.1rem; color: var(--ink); font-variant-numeric: tabular-nums; }
+.lives { display: flex; gap: 5px; align-items: center; }
+.lives i { width: 9px; height: 9px; border-radius: 50%; background: var(--lamp); box-shadow: 0 0 8px var(--lamp); transition: background .3s, box-shadow .3s; }
+.lives i.out { background: #2b3a46; box-shadow: none; }
+.stage { flex: 1; min-height: 0; position: relative; display: grid; place-items: center; overflow: hidden; }
+canvas { display: block; border-radius: 4px; touch-action: none; cursor: crosshair; max-width: 100%; }
+.overlay { position: absolute; inset: 0; display: grid; place-items: center; overflow: auto; padding: 12px; }
+.card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  padding: 22px 24px; max-width: 26rem; display: flex; flex-direction: column; gap: 12px;
+  backdrop-filter: blur(3px);
+}
+.card h2 { font-family: var(--f-display); font-weight: 800; font-size: 1.9rem; letter-spacing: 0.1em; margin: 0; text-wrap: balance; }
+.card p { margin: 0; line-height: 1.75; font-size: 0.9rem; }
+.card ul { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column; gap: 6px; font-size: 0.84rem; line-height: 1.6; color: #c3d0d6; }
+.card .em { color: var(--lamp); }
+.card .warn { color: var(--alarm); }
+.big { font-family: var(--f-num); font-size: 2.6rem; color: var(--lamp); line-height: 1; }
+.rank { font-family: var(--f-display); font-size: 1.1rem; letter-spacing: 0.08em; }
+.sub { color: var(--muted); font-size: 0.8rem; }
+button {
+  font: inherit; color: var(--night); background: var(--lamp); border: 0; border-radius: 4px;
+  padding: 10px 18px; font-weight: 700; letter-spacing: 0.1em; cursor: pointer; align-self: flex-start;
+}
+button:hover { filter: brightness(1.08); }
+button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+footer { display: flex; align-items: center; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; font-size: 0.75rem; color: var(--muted); }
+.controls { display: flex; gap: 8px; align-items: center; }
+#flareBtn {
+  --p: 0; position: relative; overflow: hidden; background: #1a2c3b; color: var(--ink);
+  border: 1px solid var(--line); padding: 7px 14px; font-weight: 700; letter-spacing: 0.08em;
+}
+#flareBtn::before { content: ""; position: absolute; inset: 0; width: calc(var(--p) * 100%); background: rgba(255, 207, 122, 0.22); }
+#flareBtn.ready { background: var(--lamp); color: var(--night); }
+#flareBtn span { position: relative; }
+#muteBtn { background: transparent; color: var(--muted); border: 1px solid var(--line); padding: 7px 10px; font-weight: 400; letter-spacing: 0; }
+kbd { font-family: var(--f-num); font-size: 0.7rem; border: 1px solid var(--line); border-radius: 3px; padding: 1px 4px; color: var(--ink); }
+@media (max-width: 480px) { h1 small { display: none; } .hint { display: none; } }
+</style>
+
+<div class="app">
+  <header>
+    <h1>灯台守の夜<small>霧の港の見張り番</small></h1>
+    <div class="stats">
+      <div class="stat">入港 <b id="score">0</b></div>
+      <div class="stat">灯 <span class="lives" id="lives"><i></i><i></i><i></i></span></div>
+      <div class="stat">最高 <b id="best">0</b></div>
+    </div>
+  </header>
+
+  <div class="stage" id="stage">
+    <canvas id="sea" aria-label="夜の海。灯台の光で船を照らす"></canvas>
+
+    <div class="overlay" id="startView">
+      <div class="card">
+        <h2>灯台守の夜</h2>
+        <p>霧の深い夜。港をめざす船の行く手には、見えない暗礁がひそんでいる。</p>
+        <ul>
+          <li>光を当てた船は<span class="em">約3秒</span>のあいだ周りが見え、岩をよけて進む。光が切れると真っ直ぐ進むだけ。</li>
+          <li>光が触れた岩は海図に記される。記された岩へ向かう暗い船は、ランタンが<span class="warn">赤く点滅</span>する。</li>
+          <li>照明弾で海全体を一瞬照らせる。30秒で再充填。</li>
+          <li>4隻入港するごとに暗礁がひとつ増える。3隻沈むと夜は終わり。</li>
+        </ul>
+        <button id="startBtn" type="button">灯をともす</button>
+      </div>
+    </div>
+
+    <div class="overlay" id="overView" hidden>
+      <div class="card">
+        <h2>灯が消えた</h2>
+        <div><span class="big" id="finalScore">0</span> <span class="sub">隻を港へ導いた</span></div>
+        <div class="rank" id="rank">見習い</div>
+        <p class="sub" id="bestNote"></p>
+        <button id="retryBtn" type="button">もう一晩</button>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <span class="hint">マウス・指で光を向ける ／ <kbd>←</kbd><kbd>→</kbd> で回す ／ <kbd>Space</kbd> 照明弾</span>
+    <div class="controls">
+      <button id="muteBtn" type="button" aria-pressed="false">音 ON</button>
+      <button id="flareBtn" type="button"><span>照明弾</span></button>
+    </div>
+  </footer>
+</div>
+
+<script>
+(() => {
+  const W = 720, H = 720;
+  const LH = { x: 360, y: 676 };
+  const HARBOR = { x: 360, y: 626 };
+  const HW = 0.13, BLEN = 900;
+  const COL = { lamp: '#ffcf7a', alarm: '#ff5d4d' };
+
+  const stage = document.getElementById('stage');
+  const cv = document.getElementById('sea'), ctx = cv.getContext('2d');
+  const fog = document.createElement('canvas'), fctx = fog.getContext('2d');
+  const $ = id => document.getElementById(id);
+  let scale = 1;
+
+  function fit() {
+    const r = stage.getBoundingClientRect();
+    const s = Math.max(0.2, Math.min(r.width / W, r.height / H));
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.style.width = W * s + 'px'; cv.style.height = H * s + 'px';
+    cv.width = fog.width = Math.round(W * s * dpr);
+    cv.height = fog.height = Math.round(H * s * dpr);
+    scale = cv.width / W;
+  }
+  new ResizeObserver(fit).observe(stage);
+  fit();
+
+  const wrap = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const rnd = (a, b) => a + Math.random() * (b - a);
+
+  // ---- storage ----
+  let best = 0;
+  try { best = parseInt(localStorage.getItem('lighthouse-best') || '0', 10) || 0; } catch (e) {}
+  function saveBest() { try { localStorage.setItem('lighthouse-best', String(best)); } catch (e) {} }
+
+  // ---- audio ----
+  let AC = null, muted = false;
+  function ensureAudio() {
+    if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+    if (AC && AC.state === 'suspended') AC.resume();
+  }
+  function tone(f, dur, vol, type = 'sine', slide) {
+    if (!AC || muted) return;
+    const t = AC.currentTime, o = AC.createOscillator(), g = AC.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(AC.destination); o.start(t); o.stop(t + dur);
+  }
+  function crashSound() {
+    if (!AC || muted) return;
+    const len = AC.sampleRate * 0.7, buf = AC.createBuffer(1, len, AC.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2);
+    const src = AC.createBufferSource(), lp = AC.createBiquadFilter(), g = AC.createGain();
+    lp.type = 'lowpass'; lp.frequency.value = 500; g.gain.value = 0.5;
+    src.buffer = buf; src.connect(lp).connect(g).connect(AC.destination); src.start();
+    tone(70, 0.8, 0.15, 'triangle', 40);
+  }
+  const bell = () => { tone(988, 1.4, 0.08); tone(1480, 1.0, 0.035); };
+  const warnPing = () => tone(330, 0.25, 0.03, 'triangle');
+  const flareSound = () => tone(260, 1.1, 0.05, 'triangle', 1300);
+
+  // ---- ambient waves ----
+  const waves = Array.from({ length: 70 }, () => ({ x: rnd(0, W), y: rnd(0, H - 60), l: rnd(10, 26), p: rnd(0, 6.3) }));
+
+  // ---- game state ----
+  let mode = 'title';
+  let G;
+  function newGame() {
+    G = { ships: [], rocks: [], wrecks: [], parts: [], texts: [], score: 0, lives: 3, t: 0,
+          spawn: 1.2, flare: 0.5, flareFx: 0, beamA: -Math.PI / 2, target: -Math.PI / 2 };
+    for (let i = 0; i < 9; i++) addRock();
+    hud();
+  }
+
+  function addRock() {
+    for (let k = 0; k < 80; k++) {
+      const r = rnd(11, 22), x = rnd(40, W - 40), y = rnd(40, H - 190);
+      if (Math.hypot(x - LH.x, y - LH.y) < 170) continue;
+      if (G.rocks.some(o => Math.hypot(o.x - x, o.y - y) < o.r + r + 40)) continue;
+      if (G.ships.some(s => Math.hypot(s.x - x, s.y - y) < 120)) continue;
+      const pts = [];
+      for (let i = 0; i < 9; i++) { const a = i / 9 * Math.PI * 2, rr = r * rnd(0.72, 1.12); pts.push([Math.cos(a) * rr, Math.sin(a) * rr]); }
+      G.rocks.push({ x, y, r, pts, charted: false, ping: 0 });
+      return true;
+    }
+    return false;
+  }
+
+  function spawnShip() {
+    const side = Math.random();
+    let x, y;
+    if (side < 0.6) { x = rnd(40, W - 40); y = -16; }
+    else if (side < 0.8) { x = -16; y = rnd(30, 360); }
+    else { x = W + 16; y = rnd(30, 360); }
+    const sp = 20 + Math.min(G.score, 45) * 0.45;
+    G.ships.push({ x, y, h: Math.atan2(HARBOR.y - y, HARBOR.x - x), sp: sp * rnd(0.85, 1.15),
+                   light: 0, phase: rnd(0, 6.3), trail: [], trailT: 0, warn: false });
+  }
+
+  function inBeam(x, y) {
+    const dist = Math.hypot(x - LH.x, y - LH.y);
+    if (dist > BLEN) return false;
+    if (dist < 60) return true;
+    return Math.abs(wrap(Math.atan2(y - LH.y, x - LH.x) - G.beamA)) < HW + 8 / dist;
+  }
+
+  function toast(x, y, s, color, size = 14) { G.texts.push({ x, y, s, color, size, life: 1.6 }); }
+
+  function wreck(s) {
+    for (let i = 0; i < 22; i++) {
+      const a = rnd(0, 6.3), v = rnd(15, 70);
+      G.parts.push({ x: s.x, y: s.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: rnd(0.6, 1.4), c: i % 3 ? '#c9b48a' : '#eef2f0' });
+    }
+    G.wrecks.push({ x: s.x, y: s.y, h: s.h, life: 14 });
+    if (mode !== 'play') return;
+    G.lives--;
+    crashSound();
+    toast(s.x, s.y - 18, '難破', COL.alarm, 16);
+    hud();
+    if (G.lives <= 0) gameOver();
+  }
+
+  function dock(s) {
+    if (mode !== 'play') return;
+    G.score++;
+    bell();
+    toast(HARBOR.x, HARBOR.y - 24, '入港 +1', COL.lamp, 15);
+    if (G.score % 4 === 0 && G.rocks.length < 24 && addRock()) toast(W / 2, 36, '海に新しい暗礁がある、という噂', '#a9bcc8', 13);
+    if (G.score > best) { best = G.score; saveBest(); }
+    hud();
+  }
+
+  function fireFlare() {
+    if (mode !== 'play' || G.flare < 1) return;
+    G.flare = 0; G.flareFx = 1;
+    for (const s of G.ships) s.light = 1;
+    for (const r of G.rocks) if (!r.charted) { r.charted = true; r.ping = 1; }
+    flareSound();
+  }
+
+  function update(dt) {
+    G.t += dt;
+    if (mode === 'title') G.target = -Math.PI / 2 + Math.sin(G.t * 0.45) * 1.05;
+    if (keys.left) G.target -= 2.4 * dt;
+    if (keys.right) G.target += 2.4 * dt;
+    G.target = clamp(G.target, -Math.PI + 0.08, -0.08);
+    const step = 3.4 * dt;
+    G.beamA += clamp(wrap(G.target - G.beamA), -step, step);
+
+    G.flare = Math.min(1, G.flare + dt / 30);
+    G.flareFx = Math.max(0, G.flareFx - dt / 1.6);
+
+    G.spawn -= dt;
+    if (G.spawn <= 0 && mode !== 'over') {
+      spawnShip();
+      G.spawn = Math.max(1.7, 5.2 - G.score * 0.11) * rnd(0.75, 1.25);
+    }
+
+    for (const r of G.rocks) {
+      if (!r.charted && inBeam(r.x, r.y)) { r.charted = true; r.ping = 1; }
+      r.ping = Math.max(0, r.ping - dt * 1.2);
+    }
+
+    for (let i = G.ships.length - 1; i >= 0; i--) {
+      const s = G.ships[i];
+      if (inBeam(s.x, s.y)) s.light = 1; else s.light = Math.max(0, s.light - dt / 3.2);
+
+      let tx = HARBOR.x - s.x, ty = HARBOR.y - s.y;
+      const dh = Math.hypot(tx, ty) || 1; tx /= dh; ty /= dh;
+      const wa = Math.sin(G.t * 0.5 + s.phase) * 0.45 * Math.min(1, dh / 250);
+      const c = Math.cos(wa), sn = Math.sin(wa);
+      let dx = tx * c - ty * sn, dy = tx * sn + ty * c;
+      const fx = Math.cos(s.h), fy = Math.sin(s.h);
+
+      let dead = false, warn = false;
+      for (const r of G.rocks) {
+        const rx = r.x - s.x, ry = r.y - s.y, d = Math.hypot(rx, ry);
+        if (d < r.r + 5) { dead = true; if (!r.charted) { r.charted = true; r.ping = 1; } break; }
+        const ux = rx / d, uy = ry / d, ahead = ux * fx + uy * fy;
+        if (s.light > 0 && d < r.r + 80 && ahead > -0.3) {
+          let px = -uy, py = ux;
+          if (px * fx + py * fy < 0) { px = -px; py = -py; }
+          const w = 3.2 * (1 - (d - r.r) / 80);
+          dx += (px - ux * 0.7) * w; dy += (py - uy * 0.7) * w;
+        }
+        if (s.light === 0 && r.charted && d < r.r + 120 && ahead > 0.55) warn = true;
+      }
+      if (dead) { G.ships.splice(i, 1); wreck(s); continue; }
+      if (warn && !s.warn && mode === 'play') warnPing();
+      s.warn = warn;
+
+      const turn = (s.light > 0 ? 2.4 : 1.2) * dt;
+      s.h += clamp(wrap(Math.atan2(dy, dx) - s.h), -turn, turn);
+      s.x += Math.cos(s.h) * s.sp * dt;
+      s.y += Math.sin(s.h) * s.sp * dt;
+
+      s.trailT -= dt;
+      if (s.trailT <= 0) { s.trail.push([s.x, s.y]); if (s.trail.length > 14) s.trail.shift(); s.trailT = 0.18; }
+
+      if (Math.hypot(HARBOR.x - s.x, HARBOR.y - s.y) < 20) { G.ships.splice(i, 1); dock(s); }
+    }
+
+    for (let i = G.parts.length - 1; i >= 0; i--) {
+      const p = G.parts[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.96; p.vy *= 0.96; p.life -= dt;
+      if (p.life <= 0) G.parts.splice(i, 1);
+    }
+    for (let i = G.wrecks.length - 1; i >= 0; i--) if ((G.wrecks[i].life -= dt) <= 0) G.wrecks.splice(i, 1);
+    for (let i = G.texts.length - 1; i >= 0; i--) { const t = G.texts[i]; t.life -= dt; t.y -= 14 * dt; if (t.life <= 0) G.texts.splice(i, 1); }
+    for (const w of waves) { w.x += 5 * dt; if (w.x > W + 30) w.x = -30; }
+  }
+
+  // ---- drawing ----
+  function cone(c, hw, alpha) {
+    const gr = c.createRadialGradient(LH.x, LH.y, 0, LH.x, LH.y, BLEN);
+    gr.addColorStop(0, `rgba(0,0,0,${alpha})`);
+    gr.addColorStop(0.6, `rgba(0,0,0,${alpha * 0.85})`);
+    gr.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = gr;
+    c.beginPath(); c.moveTo(LH.x, LH.y); c.arc(LH.x, LH.y, BLEN, G.beamA - hw, G.beamA + hw); c.closePath(); c.fill();
+  }
+
+  function draw(T) {
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+    const sea = ctx.createLinearGradient(0, 0, 0, H);
+    sea.addColorStop(0, '#0b1c2c'); sea.addColorStop(1, '#14344d');
+    ctx.fillStyle = sea; ctx.fillRect(0, 0, W, H);
+
+    ctx.strokeStyle = '#a9cbe0'; ctx.lineWidth = 1.2;
+    for (const w of waves) {
+      ctx.globalAlpha = 0.15 + 0.3 * (0.5 + 0.5 * Math.sin(T * 1.3 + w.p));
+      ctx.beginPath(); ctx.moveTo(w.x, w.y); ctx.quadraticCurveTo(w.x + w.l / 2, w.y - 3, w.x + w.l, w.y); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    for (const r of G.rocks) {
+      ctx.save(); ctx.translate(r.x, r.y);
+      ctx.strokeStyle = `rgba(225,238,244,${0.25 + 0.15 * Math.sin(T * 2 + r.x)})`; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(0, 0, r.r + 5, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#39434a'; ctx.strokeStyle = '#6b7a83'; ctx.lineWidth = 1;
+      ctx.beginPath(); r.pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#505d65';
+      ctx.beginPath(); ctx.arc(-r.r * 0.25, -r.r * 0.25, r.r * 0.35, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+
+    for (const w of G.wrecks) {
+      ctx.save(); ctx.translate(w.x, w.y); ctx.rotate(w.h + 0.6);
+      ctx.globalAlpha = Math.min(1, w.life / 3) * 0.8;
+      ctx.strokeStyle = '#8a7a5c'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(-8, -2); ctx.lineTo(1, -4); ctx.moveTo(3, 3); ctx.lineTo(10, 1); ctx.stroke();
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+
+    for (const s of G.ships) {
+      ctx.strokeStyle = 'rgba(220,235,245,0.35)'; ctx.lineWidth = 1;
+      ctx.beginPath();
+      s.trail.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+      ctx.lineTo(s.x, s.y); ctx.stroke();
+      ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.h);
+      ctx.fillStyle = '#b89a66';
+      ctx.beginPath(); ctx.moveTo(11, 0); ctx.quadraticCurveTo(2, -6, -8, -4.5); ctx.lineTo(-8, 4.5); ctx.quadraticCurveTo(2, 6, 11, 0); ctx.fill();
+      ctx.fillStyle = '#eef2f0';
+      ctx.beginPath(); ctx.moveTo(1, -8); ctx.quadraticCurveTo(-3, 0, 1, 8); ctx.lineTo(-1, 8); ctx.quadraticCurveTo(-5, 0, -1, -8); ctx.fill();
+      ctx.restore();
+    }
+
+    // fog: dark sheet with the beam, the lighthouse halo and each lantern cut out of it
+    fctx.setTransform(1, 0, 0, 1, 0, 0);
+    fctx.globalCompositeOperation = 'source-over';
+    fctx.clearRect(0, 0, fog.width, fog.height);
+    fctx.fillStyle = `rgba(4,10,18,${0.93 * (1 - G.flareFx * 0.85)})`;
+    fctx.fillRect(0, 0, fog.width, fog.height);
+    fctx.setTransform(scale, 0, 0, scale, 0, 0);
+    fctx.globalCompositeOperation = 'destination-out';
+    cone(fctx, HW * 1.7, 0.4);
+    cone(fctx, HW, 1);
+    const halo = fctx.createRadialGradient(LH.x, LH.y, 10, LH.x, LH.y, 120);
+    halo.addColorStop(0, 'rgba(0,0,0,1)'); halo.addColorStop(1, 'rgba(0,0,0,0)');
+    fctx.fillStyle = halo; fctx.beginPath(); fctx.arc(LH.x, LH.y, 120, 0, Math.PI * 2); fctx.fill();
+    for (const s of G.ships) {
+      const g = fctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, 18);
+      g.addColorStop(0, 'rgba(0,0,0,0.55)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+      fctx.fillStyle = g; fctx.beginPath(); fctx.arc(s.x, s.y, 18, 0, Math.PI * 2); fctx.fill();
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(fog, 0, 0);
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+
+    // warm glow of the beam
+    ctx.globalCompositeOperation = 'lighter';
+    const bg = ctx.createRadialGradient(LH.x, LH.y, 0, LH.x, LH.y, BLEN);
+    bg.addColorStop(0, 'rgba(255,207,122,0.32)'); bg.addColorStop(0.5, 'rgba(255,207,122,0.08)'); bg.addColorStop(1, 'rgba(255,207,122,0)');
+    ctx.fillStyle = bg;
+    ctx.beginPath(); ctx.moveTo(LH.x, LH.y); ctx.arc(LH.x, LH.y, BLEN, G.beamA - HW, G.beamA + HW); ctx.closePath(); ctx.fill();
+    if (G.flareFx > 0) { ctx.fillStyle = `rgba(255,230,180,${G.flareFx * 0.12})`; ctx.fillRect(0, 0, W, H); }
+    ctx.globalCompositeOperation = 'source-over';
+
+    // cape, pier and lighthouse
+    ctx.fillStyle = '#0d1a14';
+    ctx.beginPath(); ctx.ellipse(LH.x, H + 40, 190, 82, 0, Math.PI, 0); ctx.fill();
+    ctx.strokeStyle = '#3c3326'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(HARBOR.x - 30, HARBOR.y + 22); ctx.lineTo(HARBOR.x - 30, HARBOR.y - 6);
+    ctx.moveTo(HARBOR.x + 30, HARBOR.y + 22); ctx.lineTo(HARBOR.x + 30, HARBOR.y - 6); ctx.stroke();
+    for (const sx of [-30, 30]) {
+      ctx.fillStyle = sx < 0 ? '#ff6b5a' : '#7fe0a0';
+      ctx.globalAlpha = 0.6 + 0.4 * Math.sin(T * 3 + sx);
+      ctx.beginPath(); ctx.arc(HARBOR.x + sx, HARBOR.y - 8, 2.5, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#d8d2c4';
+    ctx.beginPath(); ctx.moveTo(LH.x - 8, LH.y - 4); ctx.lineTo(LH.x + 8, LH.y - 4); ctx.lineTo(LH.x + 12, H); ctx.lineTo(LH.x - 12, H); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#9e3b32';
+    ctx.fillRect(LH.x - 10, LH.y + 14, 20, 7); ctx.fillRect(LH.x - 11, LH.y + 30, 22, 7);
+    const lg = ctx.createRadialGradient(LH.x, LH.y - 6, 0, LH.x, LH.y - 6, 26);
+    lg.addColorStop(0, 'rgba(255,240,200,1)'); lg.addColorStop(0.3, 'rgba(255,207,122,0.6)'); lg.addColorStop(1, 'rgba(255,207,122,0)');
+    ctx.fillStyle = lg; ctx.beginPath(); ctx.arc(LH.x, LH.y - 6, 26, 0, Math.PI * 2); ctx.fill();
+
+    // charted rocks drawn on top of the fog like marks on a chart
+    for (const r of G.rocks) {
+      if (!r.charted) continue;
+      ctx.strokeStyle = 'rgba(255,120,100,0.45)'; ctx.lineWidth = 1; ctx.setLineDash([3, 4]);
+      ctx.beginPath(); ctx.arc(r.x, r.y, r.r + 6, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(r.x - 4, r.y - 4); ctx.lineTo(r.x + 4, r.y + 4); ctx.moveTo(r.x + 4, r.y - 4); ctx.lineTo(r.x - 4, r.y + 4); ctx.stroke();
+      if (r.ping > 0) {
+        ctx.strokeStyle = `rgba(255,140,110,${r.ping})`; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(r.x, r.y, r.r + 6 + (1 - r.ping) * 26, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+
+    // lanterns
+    for (const s of G.ships) {
+      const blink = s.warn && Math.sin(T * 16) > 0;
+      const color = blink ? COL.alarm : s.light > 0 ? COL.lamp : 'rgba(190,206,216,0.6)';
+      const rad = blink ? 4 : 2.6;
+      if (blink || s.light > 0) {
+        const gg = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, 12);
+        gg.addColorStop(0, blink ? 'rgba(255,93,77,0.6)' : 'rgba(255,207,122,0.45)'); gg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(s.x, s.y, 12, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.fillStyle = color; ctx.beginPath(); ctx.arc(s.x, s.y, rad, 0, Math.PI * 2); ctx.fill();
+      if (s.light > 0) {
+        ctx.strokeStyle = 'rgba(255,207,122,0.85)'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(s.x, s.y, 9, -Math.PI / 2, -Math.PI / 2 + s.light * Math.PI * 2); ctx.stroke();
+      }
+    }
+
+    for (const p of G.parts) {
+      ctx.globalAlpha = clamp(p.life, 0, 1); ctx.fillStyle = p.c; ctx.fillRect(p.x - 1, p.y - 1, 2.4, 2.4);
+    }
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'center';
+    for (const t of G.texts) {
+      ctx.globalAlpha = clamp(t.life, 0, 1);
+      ctx.font = `700 ${t.size}px "Zen Kaku Gothic New", "Hiragino Sans", sans-serif`;
+      ctx.fillStyle = t.color; ctx.fillText(t.s, t.x, t.y);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ---- HUD ----
+  const flareBtn = $('flareBtn');
+  function hud() {
+    $('score').textContent = mode === 'title' ? 0 : G.score;
+    $('best').textContent = best;
+    [...$('lives').children].forEach((el, i) => el.classList.toggle('out', i >= G.lives));
+  }
+  function hudFrame() {
+    flareBtn.style.setProperty('--p', G.flare.toFixed(3));
+    flareBtn.classList.toggle('ready', mode === 'play' && G.flare >= 1);
+  }
+
+  function rankFor(n) {
+    if (n >= 30) return '霧の主';
+    if (n >= 15) return '古参の灯台守';
+    if (n >= 5) return '一人前の灯台守';
+    return '見習い';
+  }
+
+  function start() {
+    ensureAudio();
+    mode = 'play';
+    newGame();
+    $('startView').hidden = true; $('overView').hidden = true;
+    hud();
+    cv.focus?.();
+  }
+  function gameOver() {
+    mode = 'over';
+    const n = G.score;
+    setTimeout(() => {
+      $('finalScore').textContent = n;
+      $('rank').textContent = rankFor(n);
+      $('bestNote').textContent = n >= best && n > 0 ? '今夜が自己最高の記録。' : `自己最高は ${best} 隻。`;
+      $('overView').hidden = false;
+      $('retryBtn').focus();
+    }, 1200);
+  }
+
+  // ---- input ----
+  const keys = { left: false, right: false };
+  function aim(e) {
+    if (!G) return;
+    const r = cv.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width * W, y = (e.clientY - r.top) / r.height * H;
+    if (mode === 'play') G.target = Math.atan2(Math.min(y, LH.y - 1) - LH.y, x - LH.x);
+  }
+  cv.addEventListener('pointermove', aim);
+  cv.addEventListener('pointerdown', e => { ensureAudio(); aim(e); });
+  addEventListener('keydown', e => {
+    if (e.key === 'ArrowLeft') { keys.left = true; e.preventDefault(); }
+    if (e.key === 'ArrowRight') { keys.right = true; e.preventDefault(); }
+    if (e.code === 'Space' || e.key === 'f') {
+      if (mode === 'play') { e.preventDefault(); fireFlare(); }
+    }
+  });
+  addEventListener('keyup', e => {
+    if (e.key === 'ArrowLeft') keys.left = false;
+    if (e.key === 'ArrowRight') keys.right = false;
+  });
+  flareBtn.addEventListener('click', fireFlare);
+  $('startBtn').addEventListener('click', start);
+  $('retryBtn').addEventListener('click', start);
+  $('muteBtn').addEventListener('click', e => {
+    muted = !muted;
+    e.currentTarget.textContent = muted ? '音 OFF' : '音 ON';
+    e.currentTarget.setAttribute('aria-pressed', String(muted));
+  });
+
+  // ---- loop ----
+  function boot(data) {
+    if (data && data.best > best) best = data.best;
+    newGame();
+    hud();
+    let last = performance.now(), T = 0;
+    function frame(now) {
+      const dt = Math.min(0.05, (now - last) / 1000); last = now; T += dt;
+      update(dt); draw(T); hudFrame();
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+  window.claude?.hot?.snapshot?.(() => ({ best }));
+  window.claude?.hot?.ready ? window.claude.hot.ready(boot) : boot(window.claude?.hot?.data ?? {});
+})();
+</script>

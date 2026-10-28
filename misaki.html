@@ -1,0 +1,816 @@
+<title>岬の灯台守</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@600;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+  /* Layout: one-screen night watch. A thin instrument strip on top, the sea below, panels float over the sea. Single dark look by choice. */
+  :root {
+    color-scheme: dark;
+    --ink: #07111a;
+    --sea: #0c1b29;
+    --panel: rgba(7, 17, 26, 0.88);
+    --line: #223a4e;
+    --fg: #ebe4d3;
+    --mute: #8fa5b6;
+    --lamp: #ffd27a;
+    --danger: #ff5b4a;
+    --stbd: #4fd38a;
+    --f-display: "Shippori Mincho B1", "Hiragino Mincho ProN", "Yu Mincho", serif;
+    --f-body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+    --f-num: "IBM Plex Mono", ui-monospace, "SF Mono", monospace;
+  }
+  html, body { height: 100%; }
+  body { background: var(--ink); color: var(--fg); font-family: var(--f-body); overflow: hidden; }
+  .app {
+    height: 100%; display: flex; flex-direction: column; gap: 10px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 10px 16px; box-sizing: border-box;
+  }
+  .hud { display: flex; align-items: center; gap: 8px 22px; flex-wrap: wrap; }
+  .brand { font-family: var(--f-display); font-weight: 800; font-size: 18px; letter-spacing: 0.08em; margin-right: auto; }
+  .brand small { font-family: var(--f-body); font-weight: 400; font-size: 11px; color: var(--mute); letter-spacing: 0.12em; margin-left: 10px; }
+  .stat { display: flex; align-items: baseline; gap: 8px; }
+  .lbl { font-size: 11px; letter-spacing: 0.14em; color: var(--mute); }
+  .num { font-family: var(--f-num); font-size: 18px; font-variant-numeric: tabular-nums; color: var(--lamp); }
+  .buoys { display: inline-flex; gap: 5px; align-self: center; }
+  .buoy {
+    width: 15px; height: 15px; border-radius: 50%;
+    background: conic-gradient(var(--danger) 0 25%, var(--fg) 0 50%, var(--danger) 0 75%, var(--fg) 0);
+    -webkit-mask: radial-gradient(circle, transparent 3.6px, #000 4.2px);
+    mask: radial-gradient(circle, transparent 3.6px, #000 4.2px);
+    transition: opacity .4s;
+  }
+  .buoy.off { opacity: 0.15; }
+  .btns { display: flex; gap: 6px; }
+  button {
+    font: 500 12px/1 var(--f-body); letter-spacing: 0.08em; color: var(--fg);
+    background: transparent; border: 1px solid var(--line); border-radius: 6px;
+    padding: 7px 10px; cursor: pointer;
+  }
+  button:hover { border-color: var(--mute); }
+  button:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+  .stage { position: relative; flex: 1; min-height: 0; }
+  canvas {
+    display: block; width: 100%; height: 100%; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--sea);
+    touch-action: none; cursor: crosshair; box-sizing: border-box;
+  }
+  .overlay { position: absolute; inset: 0; display: grid; place-items: center; padding: 14px; box-sizing: border-box; pointer-events: none; }
+  .card {
+    pointer-events: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    max-width: 560px; width: 100%; max-height: 100%; overflow: auto; box-sizing: border-box;
+    display: grid; grid-template-columns: auto 1fr; gap: 22px; padding: 26px 26px 24px;
+  }
+  .vtitle {
+    writing-mode: vertical-rl; font-family: var(--f-display); font-weight: 800;
+    font-size: clamp(34px, 7vw, 52px); letter-spacing: 0.18em; line-height: 1; color: var(--fg);
+    border-left: 1px solid var(--line); padding-left: 14px; margin: 0;
+  }
+  .vtitle span { color: var(--lamp); }
+  .body { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .eyebrow { font-size: 11px; letter-spacing: 0.18em; color: var(--mute); margin: 0; }
+  .eyebrow b { font-family: var(--f-num); font-weight: 500; color: var(--lamp); letter-spacing: 0.04em; }
+  .body p { margin: 0; font-size: 14px; line-height: 1.85; }
+  .legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 13px; line-height: 1.5; }
+  .legend li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; align-items: center; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; justify-self: center; }
+  .dot.lit { background: #fff3d6; box-shadow: 0 0 10px 3px rgba(255, 220, 150, 0.6); }
+  .dot.warn { background: var(--danger); box-shadow: 0 0 10px 3px rgba(255, 91, 74, 0.6); animation: blink .5s steps(2) infinite; }
+  .cone { width: 22px; height: 14px; background: linear-gradient(90deg, rgba(255, 210, 122, .9), rgba(255, 210, 122, 0)); clip-path: polygon(0 50%, 100% 0, 100% 100%); }
+  @keyframes blink { 50% { opacity: .2; } }
+  .keys { font-size: 12px; color: var(--mute); line-height: 1.8; margin: 0; }
+  kbd { font-family: var(--f-num); font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; color: var(--fg); }
+  .go {
+    align-self: flex-start; font-family: var(--f-display); font-weight: 800; font-size: 17px; letter-spacing: 0.2em;
+    color: var(--ink); background: var(--lamp); border: 0; padding: 12px 22px; border-radius: 8px;
+  }
+  .go:hover { filter: brightness(1.06); }
+  .best { font-size: 12px; color: var(--mute); }
+  .best b { font-family: var(--f-num); color: var(--fg); font-weight: 500; }
+  .result { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .result .big { font-family: var(--f-num); font-size: 54px; line-height: 1; color: var(--lamp); }
+  .result .unit { font-size: 14px; color: var(--mute); }
+  .rank { font-family: var(--f-display); font-weight: 600; font-size: 18px; letter-spacing: 0.1em; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .stats div { border-top: 1px solid var(--line); padding-top: 6px; display: grid; gap: 2px; }
+  .stats b { font-family: var(--f-num); font-size: 18px; font-weight: 500; }
+  .logbook { border: 1px solid var(--line); border-radius: 8px; max-height: 170px; overflow: auto; }
+  .logbook h3 { margin: 0; font-size: 11px; letter-spacing: 0.18em; color: var(--mute); font-weight: 500; padding: 8px 10px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--ink); }
+  .logbook ol { list-style: none; margin: 0; padding: 4px 0; }
+  .logbook li { display: grid; grid-template-columns: 46px 1fr auto; gap: 8px; padding: 4px 10px; font-size: 12.5px; }
+  .logbook time { font-family: var(--f-num); color: var(--mute); font-variant-numeric: tabular-nums; }
+  .logbook .ok { color: var(--stbd); }
+  .logbook .ng { color: var(--danger); }
+  .small.card { max-width: 300px; grid-template-columns: 1fr; text-align: left; }
+  @media (max-width: 520px) {
+    .brand small { display: none; }
+    .hud { gap: 6px 14px; }
+    .card { gap: 14px; padding: 20px 18px; }
+    .stats b { font-size: 16px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .dot.warn { animation: none; } }
+</style>
+
+<div class="app">
+  <header class="hud">
+    <div class="brand">岬の灯台守<small>夜間当直</small></div>
+    <div class="stat"><span class="lbl">時刻</span><span id="clock" class="num">19:00</span></div>
+    <div class="stat"><span class="lbl">入港</span><span id="docked" class="num">0</span></div>
+    <div class="stat"><span class="lbl">浮き輪</span><span id="lives" class="buoys"><i class="buoy"></i><i class="buoy"></i><i class="buoy"></i></span></div>
+    <div class="btns">
+      <button id="mute" type="button" aria-pressed="false">音 あり</button>
+      <button id="pauseBtn" type="button">一時停止</button>
+    </div>
+  </header>
+
+  <main class="stage">
+    <canvas id="sea" aria-label="夜の海。灯台の光で船を照らす"></canvas>
+
+    <section id="intro" class="overlay">
+      <div class="card">
+        <h1 class="vtitle">岬の<span>灯</span>台守</h1>
+        <div class="body">
+          <p class="eyebrow">一夜の当直　<b>19:00 — 05:00</b></p>
+          <p>夜の海から、漁船が二つの港へ帰ってくる。灯台の光が当たっている船だけが岩礁を見つけて舵を切れる。暗がりの船は潮に流され、まっすぐ岩へ向かうこともある。</p>
+          <ul class="legend">
+            <li><i class="dot lit"></i><span>船の灯火。暗くても位置だけは見える</span></li>
+            <li><i class="dot warn"></i><span>赤く点滅したら、このままでは座礁する。光を当てる</span></li>
+            <li><i class="cone"></i><span>光の中では岩礁が見え、船は港へ舵を取る</span></li>
+          </ul>
+          <p class="keys">マウスや指で光を向ける　<kbd>←</kbd> <kbd>→</kbd> でも回る　<kbd>P</kbd> 一時停止<br>浮き輪は三つ。三隻失うと灯は消える。</p>
+          <button id="startBtn" class="go" type="button">当直につく</button>
+          <span class="best">最高記録 <b id="bestIntro">0</b> 隻</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="end" class="overlay" hidden>
+      <div class="card">
+        <h2 id="endTitle" class="vtitle">夜が<span>明</span>けた</h2>
+        <div class="body">
+          <p class="eyebrow" id="endEyebrow">当直おわり</p>
+          <div class="result"><span id="endDocked" class="big">0</span><span class="unit">隻が入港</span></div>
+          <div id="endRank" class="rank">灯台守</div>
+          <div class="stats">
+            <div><span class="lbl">失った船</span><b id="endLost">0</b></div>
+            <div><span class="lbl">連続入港</span><b id="endStreak">0</b></div>
+            <div><span class="lbl">最高記録</span><b id="endBest">0</b></div>
+          </div>
+          <div class="logbook">
+            <h3>灯台日誌</h3>
+            <ol id="logList"></ol>
+          </div>
+          <button id="againBtn" class="go" type="button">もう一晩</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="paused" class="overlay" hidden>
+      <div class="card small">
+        <div class="body">
+          <p class="eyebrow">一時停止</p>
+          <p>海は待っていてくれる。</p>
+          <button id="resumeBtn" class="go" type="button">再開</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const cv = $('sea'), ctx = cv.getContext('2d');
+  const TAU = Math.PI * 2;
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const NIGHT = 240;            // real seconds for 19:00 → 05:00
+  const MINA = -Math.PI + 0.06, MAXA = -0.06;
+  const WW = 1000;
+  let WH = 1000;
+  let W = 0, H = 0, dpr = 1, s = 1, ox = 0, oy = 0;
+  let G = null, state = 'intro', last = 0;
+  let aim = -Math.PI / 2;
+  const keys = { left: false, right: false };
+
+  let best = 0;
+  try { best = +localStorage.getItem('misaki-best') || 0; } catch (e) {}
+
+  /* ---------- sizing ---------- */
+  function fit() { s = Math.min(W / WW, H / WH); ox = (W - WW * s) / 2; oy = (H - WH * s) / 2; }
+  function resize() {
+    const r = cv.getBoundingClientRect();
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = Math.max(1, r.width); H = Math.max(1, r.height);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    fit();
+  }
+
+  /* ---------- world ---------- */
+  const P1 = ['第一', '第二', '第三', '第五', '第七', '第八', '第十一', '第十八'];
+  const P2 = ['栄', '幸福', '宝', '大漁', '明神', '住吉', '若潮', '海王', '光', '恵比寿', '浜', '千鳥'];
+  const shipName = () => P1[(Math.random() * P1.length) | 0] + P2[(Math.random() * P2.length) | 0] + '丸';
+
+  function newGame(demo) {
+    WH = Math.round(WW * clamp(H / W || 1, 0.62, 1.7));
+    fit();
+    const coastY = WH - 70;
+    const L = { x: 500, y: WH - 100 };
+    const g = {
+      demo, t: 0, clock: demo ? NIGHT * 0.15 : 0, p: 0, coastY, L,
+      harbors: [{ x: 190, half: 56 }, { x: 810, half: 56 }],
+      theta: -Math.PI / 2, R: 900, bw: 0.17, cur: 5,
+      ships: [], rocks: [], fixed: [], obs: [], parts: [], texts: [], log: [],
+      docked: 0, lost: 0, lives: 3, streak: 0, bestStreak: 0,
+      nextSpawn: demo ? 0.2 : 2.2, nextRock: 30, flash: 0, nextFlash: rand(16, 24), shake: 0,
+      waves: [], fog: [], edge: [], town: [],
+    };
+    G = g;
+    g.fixed.push({ x: L.x, y: L.y + 10, r: 46, fixed: true });
+    for (const hb of g.harbors) {
+      g.fixed.push({ x: hb.x - hb.half, y: coastY, r: 9, fixed: true });
+      g.fixed.push({ x: hb.x + hb.half, y: coastY, r: 9, fixed: true });
+    }
+    for (let i = 0; i < 9; i++) addRock();
+    for (let i = 0; i < 110; i++) g.waves.push({ x: rand(0, 1100), y: rand(-20, coastY), len: rand(8, 24), ph: rand(0, TAU), sp: rand(4, 10) });
+    for (let i = 0; i < 7; i++) g.fog.push({ x: rand(0, WW), y: rand(0, coastY), r: rand(180, 340), vx: rand(6, 14) });
+    for (let x = -220; x <= 1220; x += 20) g.edge.push([x, coastY + rand(-4, 5)]);
+    for (let i = 0; i < 46; i++) {
+      const x = rand(-100, 1100);
+      if (g.harbors.some((hb) => Math.abs(x - hb.x) < hb.half + 12)) continue;
+      g.town.push({ x, y: rand(coastY + 18, WH + 60), ph: rand(0, TAU), c: Math.random() < 0.8 ? '255,196,120' : '200,225,255' });
+    }
+    if (demo) for (let i = 0; i < 3; i++) { spawnShip(); const sh = g.ships[i]; sh.y = rand(80, coastY - 260); }
+    return g;
+  }
+
+  function addRock(live) {
+    const g = G;
+    for (let k = 0; k < 300; k++) {
+      const r = rand(13, 28);
+      const x = rand(60, 940), y = rand(140, g.coastY - 150);
+      if (g.harbors.some((hb) => Math.hypot(x - hb.x, y - g.coastY) < 170)) continue;
+      if (Math.hypot(x - g.L.x, y - g.L.y) < 150) continue;
+      if (g.rocks.some((o) => Math.hypot(x - o.x, y - o.y) < r + o.r + 44)) continue;
+      if (live && g.ships.some((sh) => Math.hypot(x - sh.x, y - sh.y) < 160)) continue;
+      const verts = [];
+      for (let i = 0; i < 9; i++) verts.push(r * rand(0.72, 1.15));
+      g.rocks.push({ x, y, r, verts, rot: rand(0, TAU) });
+      break;
+    }
+    g.obs = g.rocks.concat(g.fixed);
+  }
+
+  function spawnShip() {
+    const g = G;
+    const x = rand(70, 930);
+    const hi = x < 500 ? 0 : 1;
+    const hb = g.harbors[hi];
+    const h = Math.atan2(g.coastY + 20, hb.x - x) + rand(-0.35, 0.35);
+    g.ships.push({ x, y: -20, h, v: lerp(34, 56, g.p) * rand(0.9, 1.1), hi, lit: 0, inBeam: false, warn: false, name: shipName(), seed: rand(0, TAU), wake: [], wakeT: 0 });
+  }
+
+  const inGap = (x) => G.harbors.some((hb) => Math.abs(x - hb.x) < hb.half - 5);
+  function hitObs(x, y, pad) {
+    for (const o of G.obs) if ((x - o.x) ** 2 + (y - o.y) ** 2 < (o.r + pad) ** 2) return o;
+    return null;
+  }
+  function inBeam(x, y) {
+    const dx = x - G.L.x, dy = y - G.L.y, d = Math.hypot(dx, dy);
+    if (d < 78) return true;
+    if (d > G.R) return false;
+    return Math.abs(angDiff(Math.atan2(dy, dx), G.theta)) < G.bw + 6 / d;
+  }
+  const currentAt = (x, y) => [
+    G.cur * Math.sin(G.t * 0.11 + y * 0.0055 + 1.3),
+    G.cur * 0.25 * Math.cos(G.t * 0.07 + x * 0.004),
+  ];
+  const fmtClock = (clock) => {
+    const m = Math.floor(19 * 60 + (clock / NIGHT) * 600);
+    return String(Math.floor(m / 60) % 24).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+  };
+
+  /* ---------- events ---------- */
+  function burst(x, y, n, color, sp, life) {
+    for (let i = 0; i < n; i++) {
+      const a = rand(0, TAU), v = rand(sp * 0.3, sp);
+      G.parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life, max: life, color, size: rand(1.5, 3.5) });
+    }
+  }
+  function floatText(x, y, text, color) { G.texts.push({ x, y, text, color, life: 1.6 }); }
+
+  function wreck(sh, why) {
+    sh.dead = true;
+    burst(sh.x, sh.y, 26, '207,227,236', 70, 1.1);
+    burst(sh.x, sh.y, 14, '150,108,70', 50, 1.6);
+    floatText(sh.x, sh.y - 16, why, '#ff5b4a');
+    if (G.demo) return;
+    G.lives--; G.lost++; G.streak = 0; G.shake = 1;
+    G.log.push({ time: fmtClock(G.clock), name: sh.name, ev: why, ok: false });
+    sfxCrash();
+  }
+  function dock(sh) {
+    sh.dead = true;
+    burst(sh.x, sh.y, 12, '255,214,140', 40, 0.9);
+    floatText(sh.x, sh.y - 30, '入港', '#ffd27a');
+    if (G.demo) return;
+    G.docked++; G.streak++; G.bestStreak = Math.max(G.bestStreak, G.streak);
+    G.log.push({ time: fmtClock(G.clock), name: sh.name, ev: '入港', ok: true });
+    sfxBell();
+  }
+
+  /* ---------- update ---------- */
+  function update(dt) {
+    const g = G;
+    g.t += dt;
+    if (!g.demo) g.clock += dt;
+    g.p = Math.min(1, g.clock / NIGHT);
+    const p = g.p;
+    g.R = Math.hypot(500, g.L.y) * lerp(1.08, 0.64, p);
+    g.cur = lerp(5, 17, p);
+
+    if (g.demo) {
+      const danger = g.ships.find((sh) => sh.warn);
+      aim = danger ? clamp(Math.atan2(danger.y - g.L.y, danger.x - g.L.x), MINA, MAXA) : -Math.PI / 2 + Math.sin(g.t * 0.45) * 1.1;
+    } else {
+      if (keys.left) aim = clamp(aim - 2.6 * dt, MINA, MAXA);
+      if (keys.right) aim = clamp(aim + 2.6 * dt, MINA, MAXA);
+    }
+    const step = 2.6 * dt;
+    g.theta += clamp(angDiff(aim, g.theta), -step, step);
+
+    g.nextSpawn -= dt;
+    if (g.nextSpawn <= 0 && p < 0.97) { spawnShip(); g.nextSpawn = (g.demo ? 4 : lerp(7.5, 2.8, p)) * rand(0.75, 1.25); }
+    if (!g.demo) {
+      g.nextRock -= dt;
+      if (g.nextRock <= 0) { if (g.rocks.length < 20) addRock(true); g.nextRock = 28; }
+    }
+    if (p > 0.2 || g.demo) {
+      g.nextFlash -= dt;
+      if (g.nextFlash <= 0) { g.flash = 1; g.nextFlash = rand(12, 22); if (!g.demo) sfxThunder(); }
+    }
+    g.flash = Math.max(0, g.flash - dt * 2.2);
+    g.shake = Math.max(0, g.shake - dt * 2.5);
+
+    for (const sh of g.ships) {
+      sh.inBeam = inBeam(sh.x, sh.y);
+      if (sh.inBeam) sh.lit = 1.4; else sh.lit -= dt;
+      const [cx, cy] = currentAt(sh.x, sh.y);
+      const hb = g.harbors[sh.hi];
+
+      if (sh.lit > 0) {
+        const final = sh.y > g.coastY - 75 && Math.abs(sh.x - hb.x) < hb.half * 0.55;
+        const ty = final ? g.coastY + 60 : g.coastY - 60;
+        const desired = Math.atan2(ty - sh.y, hb.x - sh.x);
+        const dx = Math.cos(sh.h), dy = Math.sin(sh.h), look = 170;
+        let steer = 0;
+        for (const o of g.obs) {
+          const rx = o.x - sh.x, ry = o.y - sh.y;
+          const along = rx * dx + ry * dy;
+          if (along < -o.r || along > look) continue;
+          const lat = dx * ry - dy * rx;
+          if (Math.abs(lat) < o.r + 24) {
+            const side = Math.abs(lat) < 2 ? (angDiff(desired, sh.h) > 0 ? -1 : 1) : Math.sign(lat);
+            steer += -side * (1 - Math.max(0, along) / look) * 1.6;
+          }
+        }
+        const tgt = Math.abs(steer) > 0.02 ? sh.h + clamp(steer, -1.3, 1.3) : desired;
+        sh.h += clamp(angDiff(tgt, sh.h), -1.7 * dt, 1.7 * dt);
+      } else {
+        sh.h += Math.sin(g.t * 0.8 + sh.seed) * 0.1 * dt;
+      }
+      sh.x += Math.cos(sh.h) * sh.v * dt + cx * dt;
+      sh.y += Math.sin(sh.h) * sh.v * dt + cy * dt;
+
+      sh.wakeT -= dt;
+      if (sh.wakeT <= 0) { sh.wake.push([sh.x, sh.y]); if (sh.wake.length > 18) sh.wake.shift(); sh.wakeT = 0.14; }
+
+      // predict a crash if nobody lights this ship
+      sh.warn = false;
+      if (!sh.inBeam && sh.y > 0) {
+        let x = sh.x, y = sh.y;
+        for (let i = 0; i < 16; i++) {
+          const [px, py] = currentAt(x, y);
+          x += (Math.cos(sh.h) * sh.v + px) * 0.22; y += (Math.sin(sh.h) * sh.v + py) * 0.22;
+          if (hitObs(x, y, 6) || (y > g.coastY - 6 && !inGap(x)) || x < -40 || x > WW + 40) { sh.warn = true; break; }
+        }
+      }
+
+      const o = hitObs(sh.x, sh.y, 6);
+      if (o) wreck(sh, o.fixed ? '防波堤に衝突' : '座礁');
+      else if (sh.y > g.coastY - 6 && !inGap(sh.x)) wreck(sh, '岸に乗り上げ');
+      else if (inGap(sh.x) && sh.y > g.coastY + 12) dock(sh);
+      else if (sh.x < -50 || sh.x > WW + 50 || sh.y < -90) wreck(sh, '行方不明');
+    }
+    g.ships = g.ships.filter((sh) => !sh.dead);
+
+    for (const pt of g.parts) { pt.x += pt.vx * dt; pt.y += pt.vy * dt; pt.vx *= 0.96; pt.vy *= 0.96; pt.life -= dt; }
+    g.parts = g.parts.filter((pt) => pt.life > 0);
+    for (const tx of g.texts) { tx.y -= 18 * dt; tx.life -= dt; }
+    g.texts = g.texts.filter((tx) => tx.life > 0);
+    for (const f of g.fog) { f.x += f.vx * dt; if (f.x - f.r > WW + 100) f.x = -f.r - 100; }
+
+    if (!g.demo) {
+      if (g.lives <= 0) finish(false);
+      else if (p >= 1) finish(true);
+    }
+  }
+
+  /* ---------- drawing ---------- */
+  function seaRGB() {
+    const k = G ? clamp((G.p - 0.86) / 0.14, 0, 1) : 0;
+    return [Math.round(lerp(12, 52, k)), Math.round(lerp(27, 58, k)), Math.round(lerp(41, 84, k))];
+  }
+
+  function beamPath() {
+    const g = G;
+    ctx.beginPath();
+    ctx.moveTo(g.L.x, g.L.y);
+    ctx.arc(g.L.x, g.L.y, g.R, g.theta - g.bw, g.theta + g.bw);
+    ctx.closePath();
+    ctx.moveTo(g.L.x + 78, g.L.y);
+    ctx.arc(g.L.x, g.L.y, 78, 0, TAU);
+  }
+
+  function drawWaves(bright) {
+    const g = G;
+    ctx.lineWidth = bright ? 1.4 : 1.1;
+    ctx.lineCap = 'round';
+    for (const w of g.waves) {
+      const x = ((w.x + g.t * w.sp) % 1100) - 50;
+      const a = (0.5 + 0.5 * Math.sin(g.t * 1.3 + w.ph));
+      ctx.strokeStyle = bright ? `rgba(220,235,245,${0.12 + a * 0.3})` : `rgba(120,160,190,${0.03 + a * 0.05})`;
+      ctx.beginPath();
+      ctx.moveTo(x, w.y);
+      ctx.quadraticCurveTo(x + w.len / 2, w.y - 2.5, x + w.len, w.y);
+      ctx.stroke();
+    }
+  }
+
+  function rockPath(o) {
+    ctx.beginPath();
+    o.verts.forEach((r, i) => {
+      const a = o.rot + (i / o.verts.length) * TAU;
+      const x = o.x + Math.cos(a) * r, y = o.y + Math.sin(a) * r;
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    });
+    ctx.closePath();
+  }
+  function drawRocks(alpha) {
+    const g = G;
+    ctx.globalAlpha = alpha;
+    for (const o of g.rocks) {
+      const pulse = 0.5 + 0.5 * Math.sin(g.t * 2 + o.x);
+      ctx.strokeStyle = `rgba(225,240,248,${0.35 + pulse * 0.3})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(o.x, o.y, o.r + 6 + pulse * 3, 0, TAU); ctx.stroke();
+      rockPath(o);
+      const gr = ctx.createRadialGradient(o.x - o.r * 0.3, o.y - o.r * 0.4, 1, o.x, o.y, o.r * 1.2);
+      gr.addColorStop(0, '#9a917f'); gr.addColorStop(1, '#3a3b3a');
+      ctx.fillStyle = gr; ctx.fill();
+      ctx.strokeStyle = '#25282a'; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+  function drawFaintFoam() {
+    // a sharp eye can spot surf on the reefs even in the dark
+    ctx.lineWidth = 2;
+    for (const o of G.rocks) {
+      ctx.strokeStyle = `rgba(200,220,235,${0.035 + 0.03 * Math.sin(G.t * 1.7 + o.y)})`;
+      ctx.beginPath(); ctx.arc(o.x, o.y, o.r + 7, 0, TAU); ctx.stroke();
+    }
+  }
+
+  function drawShip(sh, now) {
+    const lit = sh.inBeam || G.flash > 0.2;
+    // wake
+    ctx.lineWidth = 2;
+    for (let i = 1; i < sh.wake.length; i++) {
+      ctx.strokeStyle = `rgba(190,215,230,${(i / sh.wake.length) * (lit ? 0.22 : 0.07)})`;
+      ctx.beginPath(); ctx.moveTo(sh.wake[i - 1][0], sh.wake[i - 1][1]); ctx.lineTo(sh.wake[i][0], sh.wake[i][1]); ctx.stroke();
+    }
+    ctx.save();
+    ctx.translate(sh.x, sh.y); ctx.rotate(sh.h);
+    ctx.beginPath();
+    ctx.moveTo(14, 0); ctx.quadraticCurveTo(5, -7, -10, -5.5); ctx.lineTo(-10, 5.5); ctx.quadraticCurveTo(5, 7, 14, 0);
+    ctx.fillStyle = lit ? '#e0d6bf' : '#17232f'; ctx.fill();
+    ctx.strokeStyle = lit ? '#6a5d48' : '#22344a'; ctx.lineWidth = 1.2; ctx.stroke();
+    ctx.fillStyle = lit ? '#2f5d7a' : '#1a2836';
+    ctx.fillRect(-7, -3.2, 7, 6.4);
+    ctx.restore();
+
+    const lx = sh.x + Math.cos(sh.h) * 3, ly = sh.y + Math.sin(sh.h) * 3;
+    let col = '255,240,210', strength = 1;
+    if (sh.warn) {
+      col = '255,91,74';
+      strength = reduceMotion ? 1 : (Math.sin(now * 11) > 0 ? 1 : 0.25);
+      if (!reduceMotion) {
+        const ring = (now * 1.6) % 1;
+        ctx.strokeStyle = `rgba(255,91,74,${(1 - ring) * 0.6})`; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(sh.x, sh.y, 10 + ring * 26, 0, TAU); ctx.stroke();
+      }
+    }
+    const gl = ctx.createRadialGradient(lx, ly, 0, lx, ly, 16);
+    gl.addColorStop(0, `rgba(${col},${0.85 * strength})`); gl.addColorStop(1, `rgba(${col},0)`);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(lx, ly, 16, 0, TAU); ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = `rgba(${col},${strength})`;
+    ctx.beginPath(); ctx.arc(lx, ly, 2.2, 0, TAU); ctx.fill();
+  }
+
+  function drawCoast(sea, now) {
+    const g = G, cy = g.coastY;
+    ctx.beginPath();
+    ctx.moveTo(-220, WH + 400);
+    for (const [x, y] of g.edge) ctx.lineTo(x, y);
+    ctx.lineTo(1220, WH + 400);
+    ctx.closePath();
+    ctx.fillStyle = '#0c1512'; ctx.fill();
+    ctx.strokeStyle = 'rgba(207,227,236,0.22)'; ctx.lineWidth = 2;
+    ctx.beginPath(); g.edge.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
+
+    // town lights
+    for (const tl of g.town) {
+      const a = 0.45 + 0.35 * Math.sin(now * 0.9 + tl.ph);
+      ctx.fillStyle = `rgba(${tl.c},${a})`;
+      ctx.fillRect(tl.x, tl.y, 2.4, 2.4);
+    }
+
+    for (const hb of g.harbors) {
+      ctx.fillStyle = sea;
+      ctx.fillRect(hb.x - hb.half, cy - 6, hb.half * 2, WH + 400);
+      ctx.fillStyle = '#2b3a42';
+      ctx.fillRect(hb.x - hb.half - 7, cy - 6, 9, WH - cy + 400);
+      ctx.fillRect(hb.x + hb.half - 2, cy - 6, 9, WH - cy + 400);
+      // Japan uses IALA-B: entering harbor, red light is to starboard
+      const blink = Math.sin(now * 3.2) > -0.3 ? 1 : 0.25;
+      lamp(hb.x - hb.half, cy - 2, '255,91,74', blink);
+      lamp(hb.x + hb.half, cy - 2, '79,211,138', blink);
+    }
+  }
+  function lamp(x, y, col, a) {
+    const gl = ctx.createRadialGradient(x, y, 0, x, y, 18);
+    gl.addColorStop(0, `rgba(${col},${0.7 * a})`); gl.addColorStop(1, `rgba(${col},0)`);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(x, y, 18, 0, TAU); ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = `rgba(${col},${a})`; ctx.beginPath(); ctx.arc(x, y, 2.6, 0, TAU); ctx.fill();
+  }
+
+  function drawLighthouse() {
+    const g = G, L = g.L;
+    ctx.fillStyle = '#121c19';
+    ctx.fillRect(L.x - 34, L.y + 10, 68, g.coastY - L.y + 20);
+    ctx.beginPath(); ctx.arc(L.x, L.y + 10, 46, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'rgba(207,227,236,0.25)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(L.x, L.y + 10, 47, Math.PI * 1.02, Math.PI * 1.98); ctx.stroke();
+    ctx.fillStyle = '#ece6d6'; ctx.beginPath(); ctx.arc(L.x, L.y, 13, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#b8423a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(L.x, L.y, 9, 0, TAU); ctx.stroke();
+    const gl = ctx.createRadialGradient(L.x, L.y, 0, L.x, L.y, 70);
+    gl.addColorStop(0, 'rgba(255,225,160,0.85)'); gl.addColorStop(0.25, 'rgba(255,210,122,0.25)'); gl.addColorStop(1, 'rgba(255,210,122,0)');
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(L.x, L.y, 70, 0, TAU); ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  function drawBeam() {
+    const g = G, L = g.L;
+    ctx.globalCompositeOperation = 'lighter';
+    for (const [extra, a] of [[0.05, 0.12], [0, 0.32]]) {
+      ctx.beginPath();
+      ctx.moveTo(L.x, L.y);
+      ctx.arc(L.x, L.y, g.R, g.theta - g.bw - extra, g.theta + g.bw + extra);
+      ctx.closePath();
+      const gr = ctx.createRadialGradient(L.x, L.y, 0, L.x, L.y, g.R);
+      gr.addColorStop(0, `rgba(255,220,150,${a * 1.4})`);
+      gr.addColorStop(0.4, `rgba(255,210,130,${a * 0.6})`);
+      gr.addColorStop(1, 'rgba(255,210,130,0)');
+      ctx.fillStyle = gr; ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  function drawFog() {
+    const g = G, amt = 0.04 + g.p * 0.2 - clamp((g.p - 0.9) / 0.1, 0, 1) * 0.12;
+    for (const f of g.fog) {
+      const gr = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r);
+      gr.addColorStop(0, `rgba(150,168,186,${amt})`); gr.addColorStop(1, 'rgba(150,168,186,0)');
+      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, TAU); ctx.fill();
+    }
+  }
+
+  function draw(now) {
+    const g = G;
+    const [r, gg, b] = seaRGB();
+    const sea = `rgb(${r},${gg},${b})`;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = sea; ctx.fillRect(0, 0, W, H);
+    const dawn = clamp((g.p - 0.86) / 0.14, 0, 1);
+    if (dawn > 0) {
+      const gr = ctx.createLinearGradient(0, 0, 0, H * 0.6);
+      gr.addColorStop(0, `rgba(255,150,110,${dawn * 0.32})`); gr.addColorStop(1, 'rgba(255,150,110,0)');
+      ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H);
+    }
+
+    const sk = reduceMotion ? 0 : g.shake * 6;
+    const shx = rand(-sk, sk), shy = rand(-sk, sk);
+    ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * (ox + shx), dpr * (oy + shy));
+
+    drawWaves(false);
+    drawFaintFoam();
+    drawBeam();
+    ctx.save(); beamPath(); ctx.clip();
+    drawWaves(true); drawRocks(1);
+    ctx.restore();
+    const reveal = Math.max(g.flash, dawn * 0.85);
+    if (reveal > 0.02) drawRocks(reveal);
+    for (const sh of g.ships) drawShip(sh, now);
+    drawCoast(sea, now);
+    drawLighthouse();
+    drawFog();
+
+    for (const pt of g.parts) {
+      ctx.fillStyle = `rgba(${pt.color},${pt.life / pt.max})`;
+      ctx.beginPath(); ctx.arc(pt.x, pt.y, pt.size, 0, TAU); ctx.fill();
+    }
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (g.flash > 0) {
+      ctx.fillStyle = `rgba(215,228,255,${g.flash * (reduceMotion ? 0.1 : 0.3)})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+    ctx.textAlign = 'center';
+    ctx.font = '700 14px "Zen Kaku Gothic New", "Hiragino Sans", sans-serif';
+    for (const tx of g.texts) {
+      ctx.globalAlpha = clamp(tx.life, 0, 1);
+      ctx.fillStyle = tx.color;
+      ctx.fillText(tx.text, ox + tx.x * s, oy + tx.y * s);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /* ---------- HUD ---------- */
+  const hud = { clock: '', docked: -1, lives: -1 };
+  function updateHud() {
+    const c = fmtClock(G.clock);
+    if (c !== hud.clock) { $('clock').textContent = c; hud.clock = c; }
+    if (G.docked !== hud.docked) { $('docked').textContent = G.docked; hud.docked = G.docked; }
+    if (G.lives !== hud.lives) {
+      [...$('lives').children].forEach((el, i) => el.classList.toggle('off', i >= G.lives));
+      hud.lives = G.lives;
+    }
+  }
+
+  /* ---------- flow ---------- */
+  function show(id) { for (const k of ['intro', 'end', 'paused']) $(k).hidden = k !== id; }
+
+  function start() {
+    audioOn();
+    newGame(false);
+    aim = -Math.PI / 2;
+    state = 'play';
+    show(null);
+    sfxHorn();
+    cv.focus?.();
+  }
+
+  const ranks = [[0, '見習いの灯台守'], [6, '灯台守'], [13, '腕利きの灯台守'], [20, '岬の主'], [28, '海の守り神']];
+  function finish(survived) {
+    state = 'end';
+    const g = G;
+    if (g.docked > best) { best = g.docked; try { localStorage.setItem('misaki-best', String(best)); } catch (e) {} }
+    $('endTitle').innerHTML = survived ? '夜が<span>明</span>けた' : '灯が<span>消</span>えた';
+    $('endEyebrow').textContent = survived ? '05:00　当直おわり' : fmtClock(g.clock) + '　浮き輪がつきた';
+    $('endDocked').textContent = g.docked;
+    $('endRank').textContent = ranks.filter(([n]) => g.docked >= n).pop()[1];
+    $('endLost').textContent = g.lost;
+    $('endStreak').textContent = g.bestStreak;
+    $('endBest').textContent = best;
+    $('bestIntro').textContent = best;
+    const list = $('logList');
+    list.textContent = '';
+    const rows = g.log.length ? g.log.slice().reverse() : [{ time: fmtClock(g.clock), name: '—', ev: '記録なし', ok: true }];
+    for (const e of rows) {
+      const li = document.createElement('li');
+      const t = document.createElement('time'); t.textContent = e.time;
+      const n = document.createElement('span'); n.textContent = e.name;
+      const v = document.createElement('span'); v.textContent = e.ev; v.className = e.ok ? 'ok' : 'ng';
+      li.append(t, n, v); list.append(li);
+    }
+    show('end');
+    if (survived) sfxBell();
+  }
+
+  function setPause(on) {
+    if (on && state === 'play') { state = 'pause'; show('paused'); }
+    else if (!on && state === 'pause') { state = 'play'; show(null); last = performance.now(); }
+  }
+
+  function frame(ts) {
+    const now = ts / 1000;
+    const dt = Math.min(0.05, (ts - (last || ts)) / 1000);
+    last = ts;
+    if (state === 'play' || state === 'intro') update(dt);
+    draw(now);
+    updateHud();
+    requestAnimationFrame(frame);
+  }
+
+  /* ---------- input ---------- */
+  function aimFrom(e) {
+    if (state !== 'play') return;
+    const r = cv.getBoundingClientRect();
+    const wx = (e.clientX - r.left - ox) / s, wy = (e.clientY - r.top - oy) / s;
+    const dx = wx - G.L.x, dy = wy - G.L.y;
+    let a = Math.atan2(dy, dx);
+    if (a > 0) a = dx > 0 ? MAXA : MINA;
+    aim = clamp(a, MINA, MAXA);
+  }
+  cv.addEventListener('pointermove', aimFrom);
+  cv.addEventListener('pointerdown', (e) => { aimFrom(e); cv.setPointerCapture?.(e.pointerId); });
+
+  addEventListener('keydown', (e) => {
+    const k = e.key;
+    if (k === 'ArrowLeft' || k === 'a' || k === 'A') { keys.left = true; e.preventDefault(); }
+    else if (k === 'ArrowRight' || k === 'd' || k === 'D') { keys.right = true; e.preventDefault(); }
+    else if (k === 'p' || k === 'P' || k === 'Escape') setPause(state === 'play');
+    else if ((k === ' ' || k === 'Enter') && (state === 'intro' || state === 'end') && !(e.target instanceof HTMLButtonElement)) { e.preventDefault(); start(); }
+  });
+  addEventListener('keyup', (e) => {
+    const k = e.key;
+    if (k === 'ArrowLeft' || k === 'a' || k === 'A') keys.left = false;
+    if (k === 'ArrowRight' || k === 'd' || k === 'D') keys.right = false;
+  });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) setPause(true); });
+  addEventListener('resize', resize);
+
+  $('startBtn').addEventListener('click', start);
+  $('againBtn').addEventListener('click', start);
+  $('resumeBtn').addEventListener('click', () => setPause(false));
+  $('pauseBtn').addEventListener('click', () => (state === 'play' ? setPause(true) : setPause(false)));
+
+  /* ---------- sound ---------- */
+  let AC = null, muted = false, noiseBuf = null;
+  function audioOn() {
+    if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; } }
+    if (AC.state === 'suspended') AC.resume();
+    if (!noiseBuf) {
+      noiseBuf = AC.createBuffer(1, AC.sampleRate * 2, AC.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+  }
+  function tone(freq, dur, type, vol, delay = 0, cutoff = 0) {
+    if (!AC || muted) return;
+    const t0 = AC.currentTime + delay;
+    const o = AC.createOscillator(), gn = AC.createGain();
+    o.type = type; o.frequency.value = freq;
+    gn.gain.setValueAtTime(0.0001, t0);
+    gn.gain.exponentialRampToValueAtTime(vol, t0 + 0.02);
+    gn.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    let node = o;
+    if (cutoff) { const f = AC.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff; o.connect(f); node = f; }
+    node.connect(gn).connect(AC.destination);
+    o.start(t0); o.stop(t0 + dur + 0.05);
+  }
+  function noise(dur, cutoff, vol, delay = 0) {
+    if (!AC || muted || !noiseBuf) return;
+    const t0 = AC.currentTime + delay;
+    const src = AC.createBufferSource(), f = AC.createBiquadFilter(), gn = AC.createGain();
+    src.buffer = noiseBuf; f.type = 'lowpass'; f.frequency.value = cutoff;
+    gn.gain.setValueAtTime(vol, t0);
+    gn.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(f).connect(gn).connect(AC.destination);
+    src.start(t0); src.stop(t0 + dur + 0.05);
+  }
+  const sfxBell = () => { tone(880, 1.3, 'sine', 0.1); tone(1318, 0.9, 'sine', 0.04); };
+  const sfxCrash = () => { noise(0.7, 700, 0.35); tone(62, 0.6, 'triangle', 0.25); };
+  const sfxThunder = () => { noise(1.8, 220, 0.3, 0.35); };
+  const sfxHorn = () => { tone(98, 1.6, 'sawtooth', 0.07, 0, 500); tone(147, 1.6, 'sawtooth', 0.04, 0, 500); };
+  $('mute').addEventListener('click', () => {
+    muted = !muted;
+    $('mute').textContent = muted ? '音 なし' : '音 あり';
+    $('mute').setAttribute('aria-pressed', String(muted));
+    if (!muted) audioOn();
+  });
+
+  /* ---------- boot ---------- */
+  window.claude?.hot?.snapshot?.(() => ({ best }));
+  function boot(data) {
+    if (data && data.best > best) best = data.best;
+    $('bestIntro').textContent = best;
+    resize();
+    newGame(true);
+    requestAnimationFrame(frame);
+  }
+  window.claude?.hot?.ready ? window.claude.hot.ready(boot) : boot(window.claude?.hot?.data ?? {});
+})();
+</script>

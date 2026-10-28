@@ -1,0 +1,607 @@
+<title>ほうき星スイング</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;700&display=swap">
+<style>
+/* 全画面キャンバス + 夜空の上に浮かぶ最小限の HUD。夜空の単一テーマ */
+:root {
+  --sky: #0a0e29;
+  --sky-2: #1b1846;
+  --ink: #eef0ff;
+  --muted: #a3a9d9;
+  --star: #ffd98a;
+  --dust: #7ff0e6;
+  --hole: #a477ff;
+  --panel: rgba(14, 16, 46, 0.82);
+  --line: rgba(163, 169, 217, 0.28);
+  --display: "Dela Gothic One", "Hiragino Sans", "Yu Gothic", sans-serif;
+  --body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  background: var(--sky);
+  color: var(--ink);
+  font-family: var(--body);
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+#cv { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+.hud {
+  position: fixed; left: 0; right: 0; top: 0;
+  padding-top: calc(12px + env(safe-area-inset-top, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+.hud .block { display: grid; gap: 2px; }
+.hud .right { text-align: right; }
+.hud .label { font-size: 11px; letter-spacing: 0.12em; color: var(--muted); }
+.hud .big { font-family: var(--display); font-size: 28px; line-height: 1; }
+.hud .big small { font-family: var(--body); font-size: 13px; color: var(--muted); margin-left: 3px; }
+.hud .sub { font-size: 12px; color: var(--muted); }
+
+#sound {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  background: transparent; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 999px;
+  font: 12px var(--body); padding: 6px 12px; cursor: pointer;
+}
+#sound:focus-visible, .btn:focus-visible { outline: 2px solid var(--star); outline-offset: 3px; }
+
+.overlay {
+  position: fixed; inset: 0;
+  display: grid; place-items: center;
+  padding-block: 24px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: radial-gradient(ellipse at 50% 60%, rgba(10,14,41,0.15), rgba(10,14,41,0.7));
+}
+.card {
+  width: min(100%, 380px);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 26px 24px 22px;
+  display: grid; gap: 16px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.eyebrow { font-size: 11px; letter-spacing: 0.24em; color: var(--star); }
+h1 {
+  font-family: var(--display); font-weight: 400;
+  font-size: clamp(34px, 10vw, 44px); line-height: 1.05; margin: 0;
+  text-wrap: balance;
+  background: linear-gradient(100deg, var(--ink) 30%, var(--star) 70%, var(--dust));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.rules { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; font-size: 14px; line-height: 1.55; }
+.rules li { display: grid; grid-template-columns: 58px 1fr; gap: 10px; align-items: baseline; }
+.rules b { font-size: 11px; letter-spacing: 0.08em; color: var(--muted); font-weight: 700; }
+.result { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-variant-numeric: tabular-nums; }
+.result div { display: grid; gap: 2px; }
+.result span { font-size: 11px; letter-spacing: 0.1em; color: var(--muted); }
+.result strong { font-family: var(--display); font-weight: 400; font-size: 22px; }
+.newbest { color: var(--star); font-size: 13px; font-weight: 700; }
+.btn {
+  appearance: none; border: 0; cursor: pointer;
+  background: var(--star); color: #20163a;
+  font: 700 16px var(--body); letter-spacing: 0.1em;
+  padding: 13px 18px; border-radius: 999px;
+}
+.btn:hover { filter: brightness(1.08); }
+.hint { font-size: 12px; color: var(--muted); text-align: center; margin: -6px 0 0; }
+@media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
+</style>
+
+<canvas id="cv" aria-label="ゲーム画面"></canvas>
+
+<div class="hud" aria-live="off">
+  <div class="block">
+    <span class="label">高度</span>
+    <span class="big" id="hH">0<small>m</small></span>
+  </div>
+  <div class="block right">
+    <span class="label">スコア</span>
+    <span class="big" id="hS">0</span>
+    <span class="sub" id="hB">ベスト 0</span>
+  </div>
+</div>
+
+<button id="sound" type="button">音 オン</button>
+
+<div class="overlay" id="titleOv">
+  <div class="card">
+    <div class="eyebrow">ONE-BUTTON SKY CLIMB</div>
+    <h1>ほうき星<br>スイング</h1>
+    <ul class="rules">
+      <li><b>押す</b><span>いちばん近い星につかまって、ぐるりと回る</span></li>
+      <li><b>離す</b><span>そのときの向きに飛んでいく</span></li>
+      <li><b>注意</b><span>星は長くつかむと燃え尽きる。ブラックホールと画面の下にも気をつけて</span></li>
+      <li><b>得点</b><span>のぼった高さ + 星くず。続けて取るほど倍率アップ</span></li>
+    </ul>
+    <button class="btn" id="startBtn" type="button">はじめる</button>
+    <p class="hint">画面を押す / スペースキーで操作</p>
+  </div>
+</div>
+
+<div class="overlay" id="overOv" hidden>
+  <div class="card">
+    <div class="eyebrow" id="overWhy">FELL OUT OF THE SKY</div>
+    <h1 id="overTitle">おしまい</h1>
+    <div class="result">
+      <div><span>高度</span><strong id="rH">0m</strong></div>
+      <div><span>星くず</span><strong id="rD">0</strong></div>
+      <div><span>スコア</span><strong id="rS">0</strong></div>
+    </div>
+    <div class="newbest" id="rBest"></div>
+    <button class="btn" id="againBtn" type="button">もう一回</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  const $ = id => document.getElementById(id);
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // 論理座標: 幅 LW 固定、y は下向き。10px = 1m
+  const LW = 420;
+  const G = 820;           // 重力
+  const RANGE = 175;       // つかまれる距離
+  const MIN_R = 38;
+  const BEST_KEY = 'comet-swing-best';
+
+  let s = 1, dpr = 1, offX = 0, VH = 800, W = 0, H = 0;
+  function resize() {
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    W = innerWidth; H = innerHeight;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    s = Math.min(W, 560) / LW;
+    offX = (W - LW * s) / 2;
+    VH = H / s;
+  }
+  addEventListener('resize', resize);
+  resize();
+
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const wrap = x => ((x % LW) + LW) % LW;
+  const wdx = d => ((d + LW / 2) % LW + LW) % LW - LW / 2;
+  const dist = (ax, ay, bx, by) => Math.hypot(wdx(ax - bx), ay - by);
+
+  let best = 0;
+  try { best = Number(localStorage.getItem(BEST_KEY)) || 0; } catch (e) {}
+
+  // 遠景の星
+  const bg = Array.from({ length: 140 }, () => ({
+    x: Math.random(), y: Math.random(), z: rand(0.05, 0.35), r: rand(0.4, 1.4), t: rand(0, 6.28)
+  }));
+
+  let P, stars, holes, dust, parts, floats, camY, topGen, dustScore, dustCount, combo, comboT;
+  let running = false, holding = false, time = 0, deadT = 0;
+
+  function mkStar(x, y) { return { x, y, life: 1, dead: false, ph: rand(0, 6.28), fade: 1 }; }
+
+  function reset() {
+    stars = []; holes = []; dust = []; parts = []; floats = [];
+    dustScore = 0; dustCount = 0; combo = 0; comboT = 0;
+    camY = -VH * 0.62;
+    const home = mkStar(LW / 2, 0);
+    stars.push(home);
+    topGen = 0;
+    while (topGen > camY - 300) gen();
+    P = { x: LW / 2 + 85, y: 0, vx: 0, vy: 0, latch: home, r: 85, a: 0, w: 3.1, alive: true, maxH: 0 };
+  }
+
+  function gen() {
+    const h = Math.max(0, -topGen) / 10;
+    const gap = 125 + Math.min(105, h * 0.05) + rand(0, 55);
+    const prevY = topGen;
+    topGen -= gap;
+    const last = stars[stars.length - 1];
+    const x = wrap(last.x + (Math.random() < 0.5 ? -1 : 1) * rand(50, 170));
+    const st = mkStar(x, topGen);
+    stars.push(st);
+
+    if (Math.random() < 0.7) {
+      const n = 2 + Math.floor(rand(0, 4));
+      const rr = rand(70, 115), a0 = rand(0, 6.28), dir = Math.random() < 0.5 ? -1 : 1;
+      for (let i = 0; i < n; i++) {
+        const a = a0 + dir * i * 0.42;
+        dust.push({ x: wrap(x + Math.cos(a) * rr), y: topGen + Math.sin(a) * rr, ph: rand(0, 6.28), got: false });
+      }
+    }
+
+    if (h > 60 && Math.random() < Math.min(0.6, 0.18 + h / 2500)) {
+      for (let tries = 0; tries < 8; tries++) {
+        const hx = rand(20, LW - 20), hy = rand(topGen, prevY);
+        const ok = stars.every(o => Math.abs(o.y - hy) > 300 || dist(hx, hy, o.x, o.y) > 115)
+          && holes.every(o => dist(hx, hy, o.x, o.y) > 160);
+        if (ok) { holes.push({ x: hx, y: hy, r: rand(16, 24) + Math.min(10, h / 300), rot: rand(0, 6.28) }); break; }
+      }
+    }
+  }
+
+  // ---- 音 ----
+  let ac = null, soundOn = true;
+  try { soundOn = localStorage.getItem('comet-swing-sound') !== 'off'; } catch (e) {}
+  $('sound').textContent = soundOn ? '音 オン' : '音 オフ';
+  function ensureAudio() {
+    if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+    if (ac && ac.state === 'suspended') ac.resume();
+  }
+  function tone(f1, f2, dur, type = 'sine', vol = 0.12) {
+    if (!ac || !soundOn) return;
+    const t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain();
+    o.type = type; o.frequency.setValueAtTime(f1, t);
+    o.frequency.exponentialRampToValueAtTime(Math.max(30, f2), t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur + 0.02);
+  }
+  $('sound').addEventListener('click', e => {
+    soundOn = !soundOn; ensureAudio();
+    $('sound').textContent = soundOn ? '音 オン' : '音 オフ';
+    try { localStorage.setItem('comet-swing-sound', soundOn ? 'on' : 'off'); } catch (err) {}
+    e.currentTarget.blur();
+  });
+
+  // ---- 操作 ----
+  function tryLatch() {
+    let bestSt = null, bd = RANGE;
+    for (const st of stars) {
+      if (st.dead) continue;
+      const d = dist(P.x, P.y, st.x, st.y);
+      if (d < bd) { bd = d; bestSt = st; }
+    }
+    if (!bestSt) return;
+    const dx = wdx(P.x - bestSt.x), dy = P.y - bestSt.y;
+    const a = Math.atan2(dy, dx);
+    const r = Math.max(MIN_R, Math.hypot(dx, dy));
+    const vt = P.vx * -Math.sin(a) + P.vy * Math.cos(a);
+    const sign = vt === 0 ? 1 : Math.sign(vt);
+    const speed = Math.max(Math.abs(vt), 280);
+    P.latch = bestSt; P.a = a; P.r = r; P.w = sign * speed / r;
+    tone(540, 820, 0.09, 'triangle', 0.08);
+  }
+  function release() {
+    if (!P.latch) return;
+    P.latch = null;
+    P.vx *= 1.08; P.vy *= 1.08;
+    tone(300, 640, 0.14, 'sine', 0.06);
+  }
+  function press() {
+    if (!running) return;
+    ensureAudio();
+    holding = true;
+    if (!P.latch) tryLatch();
+  }
+  function unpress() {
+    if (!holding) return;
+    holding = false;
+    if (running) release();
+  }
+  cv.addEventListener('pointerdown', e => { e.preventDefault(); press(); });
+  addEventListener('pointerup', unpress);
+  addEventListener('pointercancel', unpress);
+  addEventListener('blur', unpress);
+  addEventListener('keydown', e => {
+    if (e.code !== 'Space' && e.code !== 'Enter') return;
+    if (!running) {
+      if (e.repeat) return;
+      const ov = !$('titleOv').hidden ? $('startBtn') : (!$('overOv').hidden ? $('againBtn') : null);
+      if (ov && document.activeElement !== ov) { e.preventDefault(); ov.click(); }
+      return;
+    }
+    e.preventDefault();
+    if (!e.repeat) press();
+  });
+  addEventListener('keyup', e => { if (e.code === 'Space' || e.code === 'Enter') unpress(); });
+
+  function start() {
+    ensureAudio();
+    reset();
+    running = true; holding = false;
+    $('titleOv').hidden = true; $('overOv').hidden = true;
+    tone(420, 880, 0.25, 'triangle', 0.07);
+  }
+  $('startBtn').addEventListener('click', e => { e.currentTarget.blur(); start(); });
+  $('againBtn').addEventListener('click', e => { e.currentTarget.blur(); start(); });
+
+  function burst(x, y, color, n, spd) {
+    for (let i = 0; i < n; i++) {
+      const a = rand(0, 6.28), v = rand(spd * 0.3, spd);
+      parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: rand(0.4, 0.9), max: 0.9, c: color, sz: rand(1, 2.6) });
+    }
+  }
+
+  function die(why) {
+    if (!P.alive) return;
+    P.alive = false; running = false; holding = false; P.latch = null;
+    burst(P.x, Math.min(P.y, camY + VH - 10), '#eef0ff', 50, 260);
+    tone(330, 50, 0.6, 'sawtooth', 0.07);
+    const h = Math.floor(P.maxH), sc = h + dustScore;
+    const isBest = sc > best;
+    if (isBest) { best = sc; try { localStorage.setItem(BEST_KEY, String(best)); } catch (e) {} }
+    $('overWhy').textContent = why === 'hole' ? 'SWALLOWED BY A BLACK HOLE' : 'FELL OUT OF THE SKY';
+    $('overTitle').textContent = why === 'hole' ? '吸い込まれた' : '落っこちた';
+    $('rH').textContent = h + 'm'; $('rD').textContent = dustCount; $('rS').textContent = sc;
+    $('rBest').textContent = isBest ? 'ベスト更新！' : 'ベスト ' + best;
+    deadT = 0.8;
+  }
+
+  // ---- 更新 ----
+  function step(dt) {
+    time += dt;
+    for (const st of stars) st.fade = st.dead ? Math.max(0, st.fade - dt * 1.5) : 1;
+
+    if (P.alive) {
+      const h = Math.max(0, -P.y / 10);
+      if (P.latch) {
+        const st = P.latch;
+        const sp0 = Math.abs(P.w * P.r);
+        if (sp0 < 820) P.w *= 1 + 0.22 * dt;
+        P.a += P.w * dt;
+        P.x = wrap(st.x + Math.cos(P.a) * P.r);
+        P.y = st.y + Math.sin(P.a) * P.r;
+        const sp = P.w * P.r;
+        P.vx = -Math.sin(P.a) * sp; P.vy = Math.cos(P.a) * sp;
+        if (running) {
+          st.life -= dt / Math.max(1.4, 2.7 - h / 1600);
+          if (st.life <= 0) {
+            st.dead = true; st.life = 0;
+            burst(st.x, st.y, '#ffd98a', 26, 180);
+            tone(200, 90, 0.25, 'square', 0.04);
+            release();
+          }
+        }
+      } else {
+        P.vy += G * dt;
+        for (const ho of holes) {
+          const dx = wdx(ho.x - P.x), dy = ho.y - P.y, d2 = dx * dx + dy * dy;
+          if (d2 < 140 * 140) {
+            const d = Math.sqrt(d2), f = Math.min(1400, 3.2e6 / Math.max(400, d2));
+            P.vx += dx / d * f * dt; P.vy += dy / d * f * dt;
+          }
+        }
+        if (P.vy > 950) P.vy = 950;
+        P.x = wrap(P.x + P.vx * dt);
+        P.y += P.vy * dt;
+        if (holding) tryLatch();
+      }
+
+      if (running) {
+        P.maxH = Math.max(P.maxH, -P.y / 10);
+        const creep = Math.min(70, 12 + P.maxH * 0.02);
+        camY -= creep * dt;
+        const target = P.y - VH * 0.45;
+        if (target < camY) camY += (target - camY) * Math.min(1, dt * 5);
+
+        for (const d of dust) {
+          if (!d.got && dist(P.x, P.y, d.x, d.y) < 24) {
+            d.got = true; dustCount++;
+            combo = comboT > 0 ? Math.min(combo + 1, 8) : 1; comboT = 1.6;
+            const pts = 10 * combo; dustScore += pts;
+            floats.push({ x: d.x, y: d.y, t: 0.9, txt: combo > 1 ? `+${pts} ×${combo}` : `+${pts}` });
+            burst(d.x, d.y, '#7ff0e6', 8, 120);
+            tone(900 + combo * 110, 1400 + combo * 140, 0.08, 'sine', 0.07);
+          }
+        }
+        comboT -= dt;
+
+        for (const ho of holes) {
+          if (dist(P.x, P.y, ho.x, ho.y) < ho.r + 5) { die('hole'); break; }
+        }
+        if (P.alive && P.y > camY + VH + 30) die('fall');
+
+        while (topGen > camY - 300) gen();
+        const cut = camY + VH + 260;
+        stars = stars.filter(o => o.y < cut || o === P.latch);
+        holes = holes.filter(o => o.y < cut);
+        dust = dust.filter(o => o.y < cut && !o.got);
+      }
+
+      if (Math.random() < (reduceMotion ? 0.3 : 0.9)) {
+        parts.push({ x: P.x + rand(-2, 2), y: P.y + rand(-2, 2), vx: -P.vx * 0.08 + rand(-15, 15), vy: -P.vy * 0.08 + rand(-15, 15),
+          life: 0.55, max: 0.55, c: P.latch ? '#ffd98a' : '#9fe9ff', sz: rand(1.5, 3.2) });
+      }
+    }
+
+    for (const ho of holes) ho.rot += dt * 1.6;
+    for (const p of parts) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.97; p.vy *= 0.97; p.life -= dt; }
+    parts = parts.filter(p => p.life > 0);
+    if (parts.length > 400) parts.splice(0, parts.length - 400);
+    for (const f of floats) { f.t -= dt; f.y -= 40 * dt; }
+    floats = floats.filter(f => f.t > 0);
+
+    if (deadT > 0) { deadT -= dt; if (deadT <= 0) $('overOv').hidden = false; }
+  }
+
+  // ---- 描画 ----
+  function wrapped(x, r, fn) {
+    fn(x);
+    if (x < r) fn(x + LW);
+    if (x > LW - r) fn(x - LW);
+  }
+
+  function drawBg() {
+    const h = Math.max(0, -camY / 10);
+    const k = Math.min(1, h / 1500);
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, `hsl(${245 - k * 25}, 55%, ${9 - k * 4}%)`);
+    g.addColorStop(1, `hsl(${265 - k * 40}, 45%, ${17 - k * 9}%)`);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    for (const b of bg) {
+      const y = (((b.y * H - camY * s * b.z) % H) + H) % H;
+      const tw = 0.5 + 0.5 * Math.sin(time * 2 + b.t);
+      ctx.globalAlpha = 0.25 + tw * 0.5;
+      ctx.fillStyle = '#dfe3ff';
+      ctx.fillRect(b.x * W, y, b.r, b.r);
+    }
+    ctx.globalAlpha = 1;
+    if (offX > 2) {
+      ctx.fillStyle = 'rgba(163,169,217,0.12)';
+      ctx.fillRect(offX - 1, 0, 1, H); ctx.fillRect(offX + LW * s, 0, 1, H);
+    }
+  }
+
+  function draw() {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawBg();
+    ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * offX, -camY * dpr * s);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, camY - 50, LW, VH + 100); ctx.clip();
+
+    // ねらえる星のヒント
+    let hint = null;
+    if (P.alive && !P.latch) {
+      let bd = RANGE;
+      for (const st of stars) {
+        if (st.dead) continue;
+        const d = dist(P.x, P.y, st.x, st.y);
+        if (d < bd) { bd = d; hint = st; }
+      }
+    }
+
+    // ブラックホール
+    for (const ho of holes) {
+      wrapped(ho.x, ho.r * 3, x => {
+        const gl = ctx.createRadialGradient(x, ho.y, ho.r * 0.6, x, ho.y, ho.r * 3.2);
+        gl.addColorStop(0, 'rgba(164,119,255,0.35)'); gl.addColorStop(1, 'rgba(164,119,255,0)');
+        ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(x, ho.y, ho.r * 3.2, 0, 7); ctx.fill();
+        ctx.lineWidth = 2.2;
+        for (let i = 0; i < 3; i++) {
+          ctx.strokeStyle = i === 1 ? 'rgba(255,170,220,0.8)' : 'rgba(164,119,255,0.85)';
+          ctx.beginPath();
+          ctx.ellipse(x, ho.y, ho.r * (1.35 + i * 0.22), ho.r * (0.5 + i * 0.08), 0.35, ho.rot + i * 2, ho.rot + i * 2 + 2.4);
+          ctx.stroke();
+        }
+        ctx.fillStyle = '#05040c'; ctx.beginPath(); ctx.arc(x, ho.y, ho.r, 0, 7); ctx.fill();
+        ctx.strokeStyle = 'rgba(220,200,255,0.5)'; ctx.lineWidth = 1; ctx.stroke();
+      });
+    }
+
+    // 星くず
+    for (const d of dust) {
+      wrapped(d.x, 10, x => {
+        const tw = 0.7 + 0.3 * Math.sin(time * 5 + d.ph);
+        ctx.save(); ctx.translate(x, d.y + Math.sin(time * 2 + d.ph) * 2); ctx.rotate(time * 1.5 + d.ph);
+        ctx.fillStyle = `rgba(127,240,230,${0.25 * tw})`; ctx.beginPath(); ctx.arc(0, 0, 10, 0, 7); ctx.fill();
+        ctx.fillStyle = '#7ff0e6';
+        ctx.beginPath(); ctx.moveTo(0, -6 * tw); ctx.lineTo(3.5, 0); ctx.lineTo(0, 6 * tw); ctx.lineTo(-3.5, 0); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      });
+    }
+
+    // ロープ
+    if (P.alive && P.latch) {
+      const st = P.latch, sx = P.x + wdx(st.x - P.x);
+      ctx.strokeStyle = 'rgba(255,217,138,0.55)'; ctx.lineWidth = 1.6;
+      ctx.setLineDash([4, 5]); ctx.lineDashOffset = -time * 40;
+      ctx.beginPath(); ctx.moveTo(P.x, P.y); ctx.lineTo(sx, st.y); ctx.stroke();
+      if (sx !== st.x) { ctx.beginPath(); ctx.moveTo(P.x - (sx - st.x), P.y); ctx.lineTo(st.x, st.y); ctx.stroke(); }
+      ctx.setLineDash([]);
+    }
+
+    // 星
+    for (const st of stars) {
+      if (st.dead && st.fade <= 0) continue;
+      wrapped(st.x, 40, x => {
+        if (st.dead) {
+          ctx.globalAlpha = st.fade * 0.7;
+          ctx.fillStyle = '#6b6f92'; ctx.beginPath(); ctx.arc(x, st.y, 4, 0, 7); ctx.fill();
+          ctx.globalAlpha = 1; return;
+        }
+        const pulse = 1 + 0.08 * Math.sin(time * 3 + st.ph);
+        const r = (6 + 4 * st.life) * pulse;
+        const gl = ctx.createRadialGradient(x, st.y, 0, x, st.y, r * 4);
+        gl.addColorStop(0, 'rgba(255,217,138,0.55)'); gl.addColorStop(1, 'rgba(255,217,138,0)');
+        ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(x, st.y, r * 4, 0, 7); ctx.fill();
+        ctx.fillStyle = '#fff4d6'; ctx.beginPath();
+        for (let i = 0; i < 8; i++) {
+          const rr = i % 2 ? r * 0.45 : r, a = i * Math.PI / 4 - Math.PI / 2 + time * 0.3;
+          ctx.lineTo(x + Math.cos(a) * rr, st.y + Math.sin(a) * rr);
+        }
+        ctx.closePath(); ctx.fill();
+        if (st.life < 1) {
+          ctx.strokeStyle = st.life < 0.35 ? '#ff8a7a' : '#ffd98a'; ctx.lineWidth = 2.5;
+          ctx.beginPath(); ctx.arc(x, st.y, r + 8, -Math.PI / 2, -Math.PI / 2 + st.life * 6.283); ctx.stroke();
+        }
+        if (st === hint) {
+          ctx.strokeStyle = 'rgba(159,233,255,0.7)'; ctx.lineWidth = 1.2; ctx.setLineDash([3, 4]);
+          ctx.beginPath(); ctx.arc(x, st.y, r + 15 + Math.sin(time * 8) * 2, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+        }
+      });
+    }
+
+    // 尾と粒子
+    for (const p of parts) {
+      ctx.globalAlpha = Math.max(0, p.life / p.max);
+      ctx.fillStyle = p.c;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.sz * (0.4 + p.life / p.max), 0, 7); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // ほうき星
+    if (P.alive) {
+      wrapped(P.x, 20, x => {
+        const gl = ctx.createRadialGradient(x, P.y, 0, x, P.y, 22);
+        gl.addColorStop(0, 'rgba(200,245,255,0.9)'); gl.addColorStop(1, 'rgba(159,233,255,0)');
+        ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(x, P.y, 22, 0, 7); ctx.fill();
+        ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x, P.y, 5.5, 0, 7); ctx.fill();
+      });
+    }
+
+    // 得点表示
+    ctx.font = '700 15px "Zen Kaku Gothic New", "Hiragino Sans", sans-serif';
+    ctx.textAlign = 'center';
+    for (const f of floats) {
+      ctx.globalAlpha = Math.min(1, f.t * 2);
+      ctx.fillStyle = '#7ff0e6'; ctx.fillText(f.txt, f.x, f.y - 14);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    // 画面下の危険ライン
+    if (running) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const gy = ctx.createLinearGradient(0, H - 60, 0, H);
+      gy.addColorStop(0, 'rgba(255,110,120,0)'); gy.addColorStop(1, 'rgba(255,110,120,0.22)');
+      ctx.fillStyle = gy; ctx.fillRect(offX, H - 60, LW * s, 60);
+    }
+  }
+
+  // ---- HUD ----
+  let lastHud = '';
+  function hud() {
+    const h = P ? Math.floor(P.maxH) : 0, sc = h + (dustScore || 0);
+    const key = h + '|' + sc + '|' + best;
+    if (key === lastHud) return;
+    lastHud = key;
+    $('hH').innerHTML = h + '<small>m</small>';
+    $('hS').textContent = sc;
+    $('hB').textContent = 'ベスト ' + best;
+  }
+
+  // ---- ループ ----
+  reset();
+  let last = performance.now(), acc = 0;
+  const DT = 1 / 120;
+  function frame(now) {
+    acc += Math.min(0.05, (now - last) / 1000);
+    last = now;
+    while (acc >= DT) { step(DT); acc -= DT; }
+    draw(); hud();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>

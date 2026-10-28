@@ -1,0 +1,377 @@
+<title>残響ラン</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;700&display=swap">
+<style>
+/* Layout: one square arena on blue-grey washi paper; ink player, vermilion echoes of your past runs. */
+:root {
+  --paper: #e6eaee;
+  --paper-2: #d6dde4;
+  --ink: #1c2633;
+  --ink-soft: #5a6878;
+  --shu: #d2452b;
+  --gold: #b8860b;
+  --font-display: "Dela Gothic One", "Hiragino Sans", "Yu Gothic", sans-serif;
+  --font-body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #141a22; --paper-2: #1e2731; --ink: #e4e9ef; --ink-soft: #8c9aab;
+    --shu: #ff6a4d; --gold: #f0c04a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #141a22; --paper-2: #1e2731; --ink: #e4e9ef; --ink-soft: #8c9aab;
+  --shu: #ff6a4d; --gold: #f0c04a; color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  background: var(--paper); color: var(--ink); font-family: var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px;
+  box-sizing: border-box;
+}
+.wrap { max-width: 600px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+header { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { font-family: var(--font-display); font-weight: 400; font-size: clamp(30px, 8vw, 44px); line-height: 1; margin: 0; letter-spacing: .02em; text-wrap: balance; }
+h1 span { color: var(--shu); }
+.hud { display: flex; gap: 18px; font-variant-numeric: tabular-nums; }
+.hud div { display: flex; flex-direction: column; align-items: flex-end; }
+.hud small { font-size: 11px; letter-spacing: .12em; color: var(--ink-soft); }
+.hud b { font-family: var(--font-display); font-weight: 400; font-size: 26px; line-height: 1.1; }
+.stage { position: relative; width: 100%; aspect-ratio: 1; max-width: 100%; }
+canvas { display: block; width: 100%; height: 100%; border-radius: 6px; background: var(--paper-2); touch-action: none; cursor: crosshair; }
+.overlay {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; text-align: center; padding: 24px; box-sizing: border-box;
+  background: color-mix(in srgb, var(--paper-2) 82%, transparent); border-radius: 6px;
+}
+.overlay h2 { font-family: var(--font-display); font-weight: 400; font-size: clamp(24px, 6vw, 34px); margin: 0; text-wrap: balance; }
+.overlay p { margin: 0; max-width: 34ch; line-height: 1.7; color: var(--ink-soft); }
+.overlay p strong { color: var(--ink); }
+button {
+  font-family: var(--font-display); font-size: 18px; letter-spacing: .06em;
+  background: var(--ink); color: var(--paper); border: 0; border-radius: 999px; padding: 12px 30px; cursor: pointer;
+}
+button:hover { background: var(--shu); }
+button:focus-visible { outline: 3px solid var(--shu); outline-offset: 3px; }
+.rules { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px 20px; font-size: 13px; line-height: 1.6; color: var(--ink-soft); }
+.rules b { color: var(--ink); display: block; font-size: 12px; letter-spacing: .12em; }
+.dot { display: inline-block; width: .7em; height: .7em; border-radius: 50%; vertical-align: -.05em; margin-right: .3em; }
+.dot.ink { background: var(--ink); } .dot.shu { background: var(--shu); } .dot.gold { background: var(--gold); }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>残響<span>ラン</span></h1>
+    <div class="hud">
+      <div><small>ラウンド</small><b id="round">0</b></div>
+      <div><small>こだま</small><b id="ghosts">0</b></div>
+      <div><small>ベスト</small><b id="best">0</b></div>
+    </div>
+  </header>
+
+  <div class="stage">
+    <canvas id="cv" aria-label="ゲーム画面"></canvas>
+    <div class="overlay" id="ov">
+      <h2 id="ovTitle">過去の自分から逃げろ</h2>
+      <p id="ovText"><span class="dot gold"></span>鈴を取るたびに、そのラウンドのあなたの動きが<strong><span class="dot shu"></span>こだま</strong>になって、次のラウンドから一緒に動き出します。こだまに触れたら終わり。</p>
+      <button id="go" type="button">はじめる</button>
+    </div>
+  </div>
+
+  <ul class="rules">
+    <li><b>操作</b>マウスで追いかける・指でなぞる・矢印キー/WASD</li>
+    <li><b>こつ</b>遠回りすると、こだまも長く居座ります。最短で取りに行くほど後が楽</li>
+    <li><b>猶予</b>ラウンド開始直後の少しの間、こだまは点線で無害です</li>
+  </ul>
+</div>
+
+<script>
+(() => {
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  const $ = id => document.getElementById(id);
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const PR = 0.018, GR = 0.016, OR = 0.026;   // radii in arena units (0..1)
+  const MAX_SPEED = 0.013, KEY_SPEED = 0.009;
+  const GRACE = 50;                              // frames ghosts are harmless at round start
+  const STEP = 1000 / 60;
+
+  let best = 0;
+  try { best = +localStorage.getItem('zankyo-best') || 0; } catch (e) {}
+  $('best').textContent = best;
+
+  let C = {};
+  function readColors() {
+    const s = getComputedStyle(document.documentElement);
+    for (const k of ['paper', 'paper-2', 'ink', 'ink-soft', 'shu', 'gold']) C[k] = s.getPropertyValue('--' + k).trim();
+  }
+  readColors();
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readColors);
+  new MutationObserver(readColors).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  // ---- state
+  let state = 'title';
+  let p, target, rec, ghosts, orb, round, frame, shake, flash, particles;
+
+  function reset() {
+    p = { x: .5, y: .5 };
+    target = null;
+    ghosts = [];
+    round = 0;
+    shake = 0; flash = 0; particles = [];
+    startRound();
+  }
+  function startRound() {
+    round++;
+    frame = 0;
+    rec = [p.x, p.y];
+    orb = placeOrb();
+    $('round').textContent = round;
+    $('ghosts').textContent = ghosts.length;
+  }
+  function placeOrb() {
+    for (let i = 0; i < 200; i++) {
+      const o = { x: .08 + Math.random() * .84, y: .08 + Math.random() * .84 };
+      if (Math.hypot(o.x - p.x, o.y - p.y) > .35) return o;
+    }
+    return { x: 1 - p.x, y: 1 - p.y };
+  }
+
+  // ---- input
+  const keys = new Set();
+  let touchLast = null;
+  function arenaPos(e) {
+    const r = cv.getBoundingClientRect();
+    return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+  }
+  cv.addEventListener('pointermove', e => {
+    if (e.pointerType === 'mouse') { target = arenaPos(e); return; }
+    if (!touchLast) return;
+    const q = arenaPos(e);
+    target = { x: clamp(p.x + (q.x - touchLast.x) * 1.3), y: clamp(p.y + (q.y - touchLast.y) * 1.3) };
+    touchLast = q;
+  });
+  cv.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'mouse') { touchLast = arenaPos(e); target = { x: p.x, y: p.y }; cv.setPointerCapture(e.pointerId); }
+  });
+  const endTouch = () => { touchLast = null; target = null; };
+  cv.addEventListener('pointerup', endTouch);
+  cv.addEventListener('pointercancel', endTouch);
+
+  const KEYMAP = { ArrowUp: 'u', KeyW: 'u', ArrowDown: 'd', KeyS: 'd', ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r' };
+  addEventListener('keydown', e => {
+    if (KEYMAP[e.code]) { keys.add(KEYMAP[e.code]); target = null; if (state === 'play') e.preventDefault(); }
+    if ((e.code === 'Space' || e.code === 'Enter') && state !== 'play' && document.activeElement !== $('go')) { e.preventDefault(); begin(); }
+  });
+  addEventListener('keyup', e => { if (KEYMAP[e.code]) keys.delete(KEYMAP[e.code]); });
+  addEventListener('blur', () => keys.clear());
+
+  const clamp = v => Math.min(1 - PR, Math.max(PR, v));
+
+  // ---- audio
+  let ac = null;
+  const SCALE = [0, 2, 4, 7, 9];
+  function tone(freq, dur, type = 'sine', vol = .18) {
+    if (!ac) return;
+    const t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur);
+  }
+  function chime(n) {
+    const step = SCALE[n % 5] + 12 * Math.floor(n / 5) % 24;
+    const f = 523.25 * Math.pow(2, step / 12);
+    tone(f, .6); tone(f * 2, .4, 'sine', .06);
+  }
+  function thud() { tone(110, .5, 'triangle', .3); tone(70, .7, 'sine', .25); }
+
+  // ---- loop
+  function update() {
+    frame++;
+    // move player
+    let vx = 0, vy = 0;
+    if (keys.size) {
+      vx = (keys.has('r') - keys.has('l')); vy = (keys.has('d') - keys.has('u'));
+      const m = Math.hypot(vx, vy) || 1; vx = vx / m * KEY_SPEED; vy = vy / m * KEY_SPEED;
+    } else if (target) {
+      const dx = target.x - p.x, dy = target.y - p.y, d = Math.hypot(dx, dy);
+      if (d > 1e-4) { const s = Math.min(d, MAX_SPEED); vx = dx / d * s; vy = dy / d * s; }
+    }
+    p.x = clamp(p.x + vx); p.y = clamp(p.y + vy);
+    rec.push(p.x, p.y);
+
+    // collisions with echoes
+    if (frame > GRACE) {
+      for (const g of ghosts) {
+        const i = frame * 2;
+        if (i >= g.path.length) continue;
+        if (Math.hypot(g.path[i] - p.x, g.path[i + 1] - p.y) < PR + GR) return die();
+      }
+    }
+    // orb
+    if (Math.hypot(orb.x - p.x, orb.y - p.y) < PR + OR) {
+      chime(round - 1);
+      burst(orb.x, orb.y, C.gold, 18);
+      ghosts.push({ path: new Float32Array(rec), born: round });
+      startRound();
+    }
+    for (const q of particles) { q.x += q.vx; q.y += q.vy; q.vx *= .92; q.vy *= .92; q.life--; }
+    particles = particles.filter(q => q.life > 0);
+    if (shake > 0) shake *= .85;
+    if (flash > 0) flash -= .04;
+  }
+
+  function burst(x, y, color, n) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, s = .004 + Math.random() * .01;
+      particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 30 + Math.random() * 20, color });
+    }
+  }
+
+  function die() {
+    state = 'over';
+    thud();
+    burst(p.x, p.y, C.shu, 30);
+    shake = reduceMotion ? 0 : 14; flash = 1;
+    const score = round - 1;
+    const isBest = score > best;
+    if (isBest) { best = score; try { localStorage.setItem('zankyo-best', best); } catch (e) {} }
+    $('best').textContent = best;
+    setTimeout(() => {
+      $('ovTitle').textContent = isBest ? `新記録 ${score} ラウンド` : `${score} ラウンド生き延びた`;
+      $('ovText').innerHTML = score === 0
+        ? 'まずは鈴をひとつ。最初のラウンドにはこだまがいません。'
+        : `あなたを捕まえたのは、${ghosts.length} 体のこだまのどれか。つまり、過去のあなたです。`;
+      $('go').textContent = 'もう一度';
+      $('ov').hidden = false;
+      $('go').focus();
+    }, 700);
+  }
+
+  // ---- render
+  let W = 0, dpr = 1;
+  function resize() {
+    dpr = Math.min(devicePixelRatio || 1, 2);
+    W = cv.clientWidth;
+    cv.width = cv.height = Math.round(W * dpr);
+  }
+  new ResizeObserver(resize).observe(cv);
+  resize();
+
+  function draw() {
+    const s = W * dpr;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, s, s);
+    const sx = shake ? (Math.random() - .5) * shake * dpr : 0, sy = shake ? (Math.random() - .5) * shake * dpr : 0;
+    ctx.setTransform(s, 0, 0, s, sx, sy);
+
+    // faint grid
+    ctx.strokeStyle = C['ink-soft']; ctx.globalAlpha = .12; ctx.lineWidth = 1 / s;
+    ctx.beginPath();
+    for (let i = 1; i < 10; i++) { ctx.moveTo(i / 10, 0); ctx.lineTo(i / 10, 1); ctx.moveTo(0, i / 10); ctx.lineTo(1, i / 10); }
+    ctx.stroke(); ctx.globalAlpha = 1;
+
+    if (!p) return;
+    const live = state === 'play' || state === 'over';
+    const harmless = frame <= GRACE && state === 'play';
+
+    // echoes
+    for (const g of ghosts) {
+      const n = g.path.length / 2, f = Math.min(frame, n - 1);
+      const done = frame >= n;
+      // trail
+      ctx.strokeStyle = C.shu; ctx.lineWidth = GR * 1.1; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      const tail = 18;
+      for (let k = 1; k < tail; k++) {
+        const a = f - k, b = f - k + 1;
+        if (a < 0) break;
+        ctx.globalAlpha = (1 - k / tail) * (done ? .1 : .35);
+        ctx.beginPath(); ctx.moveTo(g.path[a * 2], g.path[a * 2 + 1]); ctx.lineTo(g.path[b * 2], g.path[b * 2 + 1]); ctx.stroke();
+      }
+      const x = g.path[f * 2], y = g.path[f * 2 + 1];
+      if (done) {
+        // fading ring where the echo ended
+        ctx.globalAlpha = Math.max(0, .35 - (frame - n) / 60);
+        ctx.lineWidth = 1.5 / s * dpr;
+        ctx.beginPath(); ctx.arc(x, y, GR, 0, Math.PI * 2); ctx.stroke();
+      } else if (harmless) {
+        ctx.globalAlpha = .55; ctx.lineWidth = 2 / s * dpr; ctx.setLineDash([.006, .006]);
+        ctx.beginPath(); ctx.arc(x, y, GR, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      } else {
+        ctx.globalAlpha = g.born === round - 1 ? 1 : .8;
+        ctx.fillStyle = C.shu;
+        ctx.beginPath(); ctx.arc(x, y, GR, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // orb
+    if (live) {
+      const pulse = 1 + Math.sin(performance.now() / 180) * .12;
+      ctx.fillStyle = C.gold; ctx.globalAlpha = .22;
+      ctx.beginPath(); ctx.arc(orb.x, orb.y, OR * 1.7 * pulse, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.beginPath(); ctx.arc(orb.x, orb.y, OR * .8, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // own trail this round
+    if (rec && rec.length > 4) {
+      ctx.strokeStyle = C.ink; ctx.lineWidth = 1.5 / s * dpr; ctx.globalAlpha = .18;
+      ctx.beginPath(); ctx.moveTo(rec[0], rec[1]);
+      for (let i = 2; i < rec.length; i += 2) ctx.lineTo(rec[i], rec[i + 1]);
+      ctx.stroke(); ctx.globalAlpha = 1;
+    }
+
+    // player
+    if (state !== 'over') {
+      ctx.fillStyle = C.ink;
+      ctx.beginPath(); ctx.arc(p.x, p.y, PR, 0, Math.PI * 2); ctx.fill();
+    }
+
+    for (const q of particles) {
+      ctx.fillStyle = q.color; ctx.globalAlpha = Math.min(1, q.life / 30);
+      ctx.beginPath(); ctx.arc(q.x, q.y, .005, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    if (flash > 0) {
+      ctx.fillStyle = C.shu; ctx.globalAlpha = flash * .25; ctx.fillRect(0, 0, 1, 1); ctx.globalAlpha = 1;
+    }
+  }
+
+  let last = performance.now(), acc = 0;
+  function loop(now) {
+    acc += Math.min(now - last, 100); last = now;
+    while (acc >= STEP) {
+      if (state === 'play') update();
+      else if (state === 'over') {
+        for (const q of particles) { q.x += q.vx; q.y += q.vy; q.vx *= .92; q.vy *= .92; q.life--; }
+        particles = particles.filter(q => q.life > 0);
+        if (shake > 0) shake *= .85;
+        if (flash > 0) flash -= .04;
+      }
+      acc -= STEP;
+    }
+    draw();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  function begin() {
+    try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); ac.resume(); } catch (e) { ac = null; }
+    $('ov').hidden = true;
+    reset();
+    state = 'play';
+    cv.focus?.();
+  }
+  $('go').addEventListener('click', begin);
+
+  // pause on tab hide so a ghost doesn't catch you while away
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { keys.clear(); last = performance.now(); } else { last = performance.now(); acc = 0; } });
+})();
+</script>

@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>body{margin:0}[hidden]{display:none!important}</style>
+<title>宵宮の金魚すくい</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Yuji+Syuku&family=Zen+Maru+Gothic:wght@500;700;900&display=swap">
+<style>
+/* Layout: a single night-stall — noren banner, a wooden-rimmed tub as the stage, HUD on the rim, price board below */
+:root{
+  --night:#0d1226; --night-2:#18203f; --wood:#5b3b25; --wood-hi:#83593a;
+  --washi:#f4ecd8; --ink:#e9e4f2; --muted:#a3a8cc; --kingyo:#e5452b; --lantern:#ffb35c; --water:#123d5c;
+  --f-display:"Yuji Syuku","Hiragino Mincho ProN","Yu Mincho",serif;
+  --f-body:"Zen Maru Gothic","Hiragino Maru Gothic ProN","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  color-scheme:dark;
+}
+body{
+  background:radial-gradient(ellipse 80% 40% at 50% 0%, rgba(255,160,80,.16), transparent 70%), var(--night);
+  color:var(--ink); font-family:var(--f-body); font-weight:500; line-height:1.7;
+}
+.wrap{
+  max-width:960px; margin:0 auto; display:grid; gap:18px;
+  padding-block:0 48px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+}
+.noren{
+  background:repeating-linear-gradient(90deg,var(--kingyo) 0 calc(25% - 4px),transparent calc(25% - 4px) 25%);
+  border-radius:0 0 4px 4px; padding-block:22px 30px; display:grid; place-items:center;
+  box-shadow:0 10px 30px rgba(229,69,43,.18);
+}
+.noren h1{
+  margin:0; font-family:var(--f-display); font-weight:400; color:var(--washi);
+  font-size:clamp(44px,9vw,84px); line-height:1; letter-spacing:.12em; text-wrap:balance;
+  text-shadow:0 2px 0 rgba(0,0,0,.18);
+}
+.intro{display:flex; flex-wrap:wrap; gap:8px 24px; align-items:baseline; justify-content:space-between}
+.eyebrow{margin:0; font-size:12px; letter-spacing:.24em; color:var(--lantern); font-weight:700}
+.lede{margin:0; max-width:40em; color:var(--muted); min-width:0}
+
+.hud{display:flex; flex-wrap:wrap; gap:10px 22px; align-items:end}
+.stat{display:grid; gap:2px; min-width:0}
+.stat .k{font-size:11px; letter-spacing:.16em; color:var(--muted)}
+.stat .v{font-size:26px; font-weight:900; line-height:1.1; font-variant-numeric:tabular-nums; color:var(--washi)}
+.stat .v small{font-size:13px; font-weight:700; color:var(--muted); margin-left:2px}
+.pois{display:flex; gap:6px; height:29px; align-items:center}
+.pois i{width:20px; height:20px; border-radius:50%; border:3px solid var(--kingyo); background:var(--washi); display:block}
+.pois i.used{background:transparent; border-color:rgba(229,69,43,.35)}
+.gauge{width:120px; height:12px; border-radius:6px; background:rgba(255,255,255,.12); overflow:hidden; margin-block:8px}
+.gauge i{display:block; height:100%; width:100%; background:var(--washi); transform-origin:left}
+.gauge.low i{background:var(--kingyo)}
+.chip{
+  margin-left:auto; font:inherit; font-size:13px; font-weight:700; color:var(--ink);
+  background:var(--night-2); border:1px solid rgba(255,255,255,.14); border-radius:999px; padding:6px 14px; cursor:pointer;
+}
+.chip:focus-visible,.btn:focus-visible,canvas:focus-visible{outline:3px solid var(--lantern); outline-offset:3px}
+
+.tub{
+  position:relative; aspect-ratio:4/3; max-width:100%;
+  border:12px solid var(--wood); border-radius:24px; overflow:hidden; background:var(--water);
+  box-shadow:inset 0 0 0 2px var(--wood-hi), 0 0 0 2px #3a2516, 0 24px 60px rgba(0,0,0,.55);
+}
+@media (max-width:620px){ .tub{aspect-ratio:3/4; border-width:8px; border-radius:18px} }
+canvas{display:block; width:100%; height:100%; touch-action:none}
+.tub.playing canvas{cursor:none}
+.overlay{
+  position:absolute; inset:0; display:grid; place-items:center; padding:16px; overflow:auto;
+  background:rgba(8,12,30,.5);
+}
+.card{
+  background:var(--washi); color:var(--night); border-radius:6px; padding:22px 24px; max-width:400px; width:100%;
+  display:grid; gap:12px; box-shadow:0 18px 40px rgba(0,0,0,.45);
+}
+.card h2{margin:0; font-family:var(--f-display); font-weight:400; font-size:30px; line-height:1.2; text-wrap:balance}
+.card p{margin:0}
+.card ol{margin:0; padding-left:1.4em; display:grid; gap:4px}
+.card .meta{font-size:13px; color:#5b5570}
+.btn{
+  justify-self:start; font:inherit; font-weight:900; font-size:17px; letter-spacing:.08em;
+  color:#fff; background:var(--kingyo); border:0; border-radius:999px; padding:11px 26px; cursor:pointer;
+  box-shadow:0 4px 0 #a92c18;
+}
+.btn:active{transform:translateY(2px); box-shadow:0 2px 0 #a92c18}
+.result{display:flex; align-items:baseline; gap:10px}
+.result b{font-size:52px; font-weight:900; line-height:1; font-variant-numeric:tabular-nums; color:var(--kingyo)}
+.rank{font-family:var(--f-display); font-size:22px}
+.tally{display:flex; flex-wrap:wrap; gap:6px 14px; font-size:14px; padding:0; margin:0; list-style:none}
+.newbest{color:var(--kingyo); font-weight:900; font-size:14px}
+
+.board{display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px}
+.board h3{grid-column:1/-1; margin:6px 0 0; font-family:var(--f-display); font-weight:400; font-size:22px; color:var(--washi)}
+.tag{
+  display:grid; grid-template-columns:auto 1fr auto; gap:2px 12px; align-items:center;
+  background:var(--night-2); border:1px solid rgba(255,255,255,.07); border-radius:8px; padding:12px 14px;
+}
+.tag .sw{grid-row:span 2; width:30px; height:16px; border-radius:50%; background:var(--c)}
+.tag .nm{font-weight:900; color:var(--washi)}
+.tag .pt{font-weight:900; font-size:20px; font-variant-numeric:tabular-nums; color:var(--lantern); grid-row:span 2}
+.tag .wt{font-size:12px; color:var(--muted); letter-spacing:.06em}
+.tips{margin:0; color:var(--muted); font-size:14px; max-width:44em}
+.tips b{color:var(--washi)}
+</style>
+
+<main class="wrap">
+  <header class="noren"><h1>金魚すくい</h1></header>
+
+  <div class="intro">
+    <p class="eyebrow">宵宮の夜店 ・ ぽい三枚で六十秒</p>
+    <p class="lede">ぽいを水に沈めて、金魚が上に来るのを待ち、そっと上げる。紙は水に入れているほど、速く動かすほど弱くなります。</p>
+  </div>
+
+  <div class="hud">
+    <div class="stat"><span class="k">のこり</span><span class="v"><span id="time">60</span><small>秒</small></span></div>
+    <div class="stat"><span class="k">ぽい</span><span class="pois" id="pois"><i></i><i></i><i></i></span></div>
+    <div class="stat"><span class="k">紙の強さ</span><span class="gauge" id="gauge"><i id="gaugeBar"></i></span></div>
+    <div class="stat"><span class="k">点数</span><span class="v" id="score">0</span></div>
+    <div class="stat"><span class="k">最高</span><span class="v" id="best">0</span></div>
+    <button class="chip" id="sound" type="button" aria-pressed="true">音 あり</button>
+  </div>
+
+  <div class="tub" id="tub">
+    <canvas id="cv" tabindex="0" aria-label="金魚の水槽。押している間ぽいが水に入り、離すとすくい上げます。矢印キーで移動、スペースで沈める。"></canvas>
+
+    <div class="overlay" id="startPanel">
+      <div class="card">
+        <h2>いらっしゃい</h2>
+        <ol>
+          <li>押すと、ぽいが水に入ります</li>
+          <li>金魚がぽいの上を泳ぐのを待ちます</li>
+          <li>離すと、すくい上げます</li>
+        </ol>
+        <p class="meta">一度に何匹もすくうとおまけ点。重い金魚は濡れた紙を破ります。キーボードなら矢印キーとスペース。</p>
+        <button class="btn" id="startBtn" type="button">はじめる</button>
+      </div>
+    </div>
+
+    <div class="overlay" id="overPanel" hidden>
+      <div class="card">
+        <h2 id="overTitle">おしまい</h2>
+        <div class="result"><b id="finalScore">0</b><span>点</span></div>
+        <p class="rank" id="rank"></p>
+        <ul class="tally" id="tally"></ul>
+        <p class="newbest" id="newBest" hidden>最高点を更新しました</p>
+        <button class="btn" id="againBtn" type="button">もう一回</button>
+      </div>
+    </div>
+  </div>
+
+  <section class="board" aria-label="金魚の値札">
+    <h3>値札</h3>
+    <div class="tag" style="--c:#ee4a2a"><span class="sw"></span><span class="nm">小赤</span><span class="pt">1点</span><span class="wt">軽い ・ いちばん多い</span></div>
+    <div class="tag" style="--c:linear-gradient(90deg,#f6efe6 45%,#e8402a 45%)"><span class="sw"></span><span class="nm">更紗</span><span class="pt">2点</span><span class="wt">ふつう ・ 紅白もよう</span></div>
+    <div class="tag" style="--c:#2a2433"><span class="sw"></span><span class="nm">黒出目金</span><span class="pt">3点</span><span class="wt">重い ・ のんびり泳ぐ</span></div>
+    <div class="tag" style="--c:#ffc23a"><span class="sw"></span><span class="nm">琉金</span><span class="pt">10点</span><span class="wt">とても重い ・ 速い ・ まれ</span></div>
+  </section>
+
+  <p class="tips"><b>コツ</b>　金魚の真上から入れると水しぶきで逃げられます。進む先に沈めて待ちましょう。ぽいを水中で速く動かすと紙が早く傷み、近くの金魚も驚きます。重い金魚は乾いたぽいのうちに。</p>
+</main>
+
+<script>
+(() => {
+const TAU = Math.PI * 2;
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const tub = document.getElementById('tub');
+const $ = id => document.getElementById(id);
+const FONT = getComputedStyle(document.documentElement).getPropertyValue('--f-body');
+
+const TYPES = {
+  koaka:  {name:'小赤',   pts:1,  w:1,   len:34, speed:62, tail:.55, girth:.2,  body:'#ee4a2a', fin:'rgba(255,120,80,.55)'},
+  sarasa: {name:'更紗',   pts:2,  w:1.6, len:40, speed:52, tail:.62, girth:.22, body:'#f6efe6', patch:'#e8402a', fin:'rgba(255,240,230,.5)'},
+  demekin:{name:'黒出目金', pts:3,  w:2.4, len:42, speed:38, tail:.72, girth:.25, body:'#1e1a24', fin:'rgba(40,36,55,.7)', eyes:true},
+  ryukin: {name:'琉金',   pts:10, w:3.4, len:50, speed:88, tail:.9,  girth:.28, body:'#ffc23a', fin:'rgba(255,215,110,.55)', glow:true},
+};
+const ORDER = ['koaka','sarasa','demekin','ryukin'];
+const FISH_COUNT = 14, GAME_TIME = 60, POI_COUNT = 3;
+
+let W = 0, H = 0, S = 1;
+function resize() {
+  const r = cv.getBoundingClientRect();
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  W = r.width; H = r.height;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  S = Math.max(.6, Math.min(W, H) / 560);
+  poi.R = 46 * S;
+}
+
+// ---------- state ----------
+let state = 'title', score = 0, best = 0, timeLeft = GAME_TIME, poisLeft = POI_COUNT;
+let fish = [], ripples = [], popups = [], flying = [], pending = [];
+let caught = {}, goldenCalled = false, clock = 0;
+const poi = {x:0, y:0, R:46, speed:0, sub:false, wet:0, broken:false, brokenT:0, jag:[], blots:[]};
+let tx = 0, ty = 0, touchOffset = 0;
+
+try { best = +localStorage.getItem('kingyo-best') || 0; } catch (e) {}
+
+function rand(a, b) { return a + Math.random() * (b - a); }
+function angDiff(a, b) { let d = a - b; while (d > Math.PI) d -= TAU; while (d < -Math.PI) d += TAU; return d; }
+
+function pickType() {
+  const r = Math.random() * 100;
+  return r < 55 ? 'koaka' : r < 80 ? 'sarasa' : r < 95 ? 'demekin' : 'ryukin';
+}
+function makeFish(t, fromEdge) {
+  const f = {t, k:rand(.85, 1.15), phase:rand(0, TAU), wander:0, flee:0, seed:rand(-.6, .6), a:rand(0, TAU), x:rand(.15, .85) * W, y:rand(.15, .85) * H};
+  if (fromEdge) {
+    const side = Math.floor(Math.random() * 4);
+    f.x = side === 0 ? 4 : side === 1 ? W - 4 : rand(.2, .8) * W;
+    f.y = side === 2 ? 4 : side === 3 ? H - 4 : rand(.2, .8) * H;
+    f.a = Math.atan2(H / 2 - f.y, W / 2 - f.x) + rand(-.5, .5);
+  }
+  return f;
+}
+function fillPond() { fish = []; for (let i = 0; i < FISH_COUNT; i++) fish.push(makeFish(i === 0 ? 'demekin' : pickType(), false)); }
+
+function freshPoi() {
+  poi.wet = 0; poi.broken = false; poi.brokenT = 0; poi.sub = false;
+  poi.blots = Array.from({length:6}, () => ({dx:rand(-.55, .55), dy:rand(-.55, .55), r:rand(.18, .38)}));
+}
+
+// ---------- sound ----------
+let AC = null, soundOn = true;
+function ensureAudio() {
+  if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { AC = null; } }
+  if (AC && AC.state === 'suspended') AC.resume().catch(() => {});
+}
+function noise(dur, freq, type, vol) {
+  if (!soundOn || !AC) return;
+  const n = Math.floor(AC.sampleRate * dur), buf = AC.createBuffer(1, n, AC.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2.5);
+  const src = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain();
+  src.buffer = buf; f.type = type; f.frequency.value = freq; g.gain.value = vol;
+  src.connect(f).connect(g).connect(AC.destination); src.start();
+}
+function blip(f1, f2, dur, vol, delay = 0) {
+  if (!soundOn || !AC) return;
+  const t = AC.currentTime + delay, o = AC.createOscillator(), g = AC.createGain();
+  o.type = 'sine'; o.frequency.setValueAtTime(f1, t); o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + dur);
+  o.connect(g).connect(AC.destination); o.start(t); o.stop(t + dur + .02);
+}
+
+// ---------- effects ----------
+function ripple(x, y, big) { ripples.push({x, y, r:poi.R * (big ? .6 : .9), life:1, big}); }
+function popup(x, y, text, color, size = 18) { popups.push({x, y, text, color, size, life:1}); }
+function scare(x, y, radius, chance) {
+  for (const f of fish) {
+    if (Math.hypot(f.x - x, f.y - y) < radius && Math.random() < chance) {
+      f.a = Math.atan2(f.y - y, f.x - x) + rand(-.4, .4); f.flee = rand(.5, .8);
+    }
+  }
+}
+
+// ---------- actions ----------
+function dip() {
+  if (state !== 'play' || poi.broken || poi.sub) return;
+  poi.sub = true; poi.wet = Math.min(1, poi.wet + .02);
+  ripple(poi.x, poi.y, true); noise(.22, 900, 'lowpass', .35);
+  scare(poi.x, poi.y, poi.R * 1.5, .55);
+}
+function lift() {
+  if (!poi.sub) return;
+  poi.sub = false;
+  ripple(poi.x, poi.y, false); noise(.18, 1600, 'lowpass', .2);
+  const got = fish.filter(f => Math.hypot(f.x - poi.x, f.y - poi.y) < poi.R * .78);
+  if (!got.length) return;
+  const load = got.reduce((s, f) => s + TYPES[f.t].w, 0);
+  if (load * .1 > 1 - poi.wet) {
+    scare(poi.x, poi.y, poi.R * 2, 1);
+    tear(got.length > 1 ? '重すぎた！' : '破れた！');
+    return;
+  }
+  let pts = 0;
+  for (const f of got) {
+    pts += TYPES[f.t].pts; caught[f.t] = (caught[f.t] || 0) + 1;
+    fish.splice(fish.indexOf(f), 1);
+    flying.push({f, t:0, sx:f.x, sy:f.y});
+    pending.push({t:rand(1.2, 2.4), type:pickType()});
+  }
+  const bonus = (got.length - 1) * 2;
+  score += pts + bonus;
+  popup(poi.x, poi.y - poi.R, '+' + (pts + bonus) + (bonus ? `  ${got.length}匹！` : ''), got.some(f => f.t === 'ryukin') ? '#ffd25c' : '#fff6e6', bonus ? 22 : 18);
+  blip(660, 990, .14, .18); if (got.length > 1) blip(990, 1480, .16, .15, .1);
+  poi.wet += load * .06;
+  scare(poi.x, poi.y, poi.R * 1.6, .7);
+  if (poi.wet >= 1) tear('すくえたけど破れた');
+}
+function tear(msg) {
+  if (poi.broken) return;
+  poi.broken = true; poi.brokenT = 0; poi.sub = false;
+  poi.jag = Array.from({length:28}, () => rand(.12, .7));
+  poisLeft--;
+  popup(poi.x, poi.y + poi.R * .2, msg, '#ff9a80', 20);
+  noise(.12, 2400, 'highpass', .35); blip(300, 140, .25, .12);
+}
+
+function start() {
+  ensureAudio();
+  state = 'play'; score = 0; timeLeft = GAME_TIME; poisLeft = POI_COUNT; caught = {}; goldenCalled = false;
+  flying = []; popups = []; pending = [];
+  fillPond(); freshPoi();
+  tx = poi.x = W / 2; ty = poi.y = H * .65;
+  $('startPanel').hidden = true; $('overPanel').hidden = true;
+  tub.classList.add('playing');
+  cv.focus({preventScroll:true});
+}
+function endGame(byTime) {
+  state = 'over'; poi.sub = false;
+  tub.classList.remove('playing');
+  const isBest = score > best && score > 0;
+  if (isBest) { best = score; try { localStorage.setItem('kingyo-best', String(best)); } catch (e) {} }
+  $('overTitle').textContent = byTime ? '時間です' : 'ぽいがなくなりました';
+  $('finalScore').textContent = score;
+  $('rank').textContent = score >= 60 ? '金魚の神様' : score >= 35 ? '縁日の名人' : score >= 18 ? 'すくい上手' : score >= 8 ? '夜店の常連' : 'はじめての夏';
+  const list = ORDER.filter(t => caught[t]).map(t => `<li>${TYPES[t].name} × ${caught[t]}</li>`).join('');
+  $('tally').innerHTML = list || '<li>今回は一匹も入りませんでした</li>';
+  $('newBest').hidden = !isBest;
+  $('overPanel').hidden = false;
+  blip(520, 780, .2, .12); blip(780, 1040, .3, .1, .18);
+  $('againBtn').focus({preventScroll:true});
+}
+
+// ---------- input ----------
+function toLocal(e) { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top - touchOffset]; }
+cv.addEventListener('pointermove', e => { touchOffset = e.pointerType === 'touch' ? poi.R * 1.1 : 0; [tx, ty] = toLocal(e); });
+cv.addEventListener('pointerdown', e => {
+  if (state !== 'play') return;
+  e.preventDefault();
+  try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+  touchOffset = e.pointerType === 'touch' ? poi.R * 1.1 : 0;
+  [tx, ty] = toLocal(e);
+  if (e.pointerType === 'touch') { poi.x = tx; poi.y = ty; poi.speed = 0; }
+  dip();
+});
+cv.addEventListener('pointerup', lift);
+cv.addEventListener('pointercancel', lift);
+const keys = new Set();
+cv.addEventListener('keydown', e => {
+  if (e.key.startsWith('Arrow')) { keys.add(e.key); e.preventDefault(); }
+  if (e.key === ' ') { e.preventDefault(); if (!e.repeat) dip(); }
+});
+cv.addEventListener('keyup', e => { keys.delete(e.key); if (e.key === ' ') lift(); });
+cv.addEventListener('blur', () => { keys.clear(); lift(); });
+
+$('startBtn').addEventListener('click', start);
+$('againBtn').addEventListener('click', start);
+$('sound').addEventListener('click', () => {
+  soundOn = !soundOn; if (soundOn) ensureAudio();
+  $('sound').textContent = soundOn ? '音 あり' : '音 なし';
+  $('sound').setAttribute('aria-pressed', String(soundOn));
+});
+
+// ---------- update ----------
+function update(dt) {
+  clock += dt;
+  if (state === 'play') {
+    const ks = 380 * S * dt;
+    if (keys.has('ArrowLeft')) tx -= ks; if (keys.has('ArrowRight')) tx += ks;
+    if (keys.has('ArrowUp')) ty -= ks;   if (keys.has('ArrowDown')) ty += ks;
+    tx = Math.max(0, Math.min(W, tx)); ty = Math.max(0, Math.min(H, ty));
+
+    const ox = poi.x, oy = poi.y, ease = Math.min(1, dt * 18);
+    poi.x += (tx - poi.x) * ease; poi.y += (ty - poi.y) * ease;
+    poi.speed += (Math.hypot(poi.x - ox, poi.y - oy) / dt - poi.speed) * .3;
+
+    if (poi.sub && !poi.broken) {
+      const sp = Math.min(1200, poi.speed / S);
+      poi.wet += dt * (.055 + sp * .00024);
+      if (sp > 320) scare(poi.x, poi.y, poi.R * 1.3, dt * 6);
+      if (poi.wet >= 1) tear('水の中で破れた');
+    }
+    if (poi.broken) {
+      poi.brokenT += dt;
+      if (poi.brokenT > .9) { if (poisLeft > 0) freshPoi(); else endGame(false); }
+    }
+    timeLeft -= dt;
+    if (!goldenCalled && timeLeft < 30) {
+      goldenCalled = true;
+      fish.push(makeFish('ryukin', true));
+      popup(W / 2, H * .18, '琉金があらわれた', '#ffd25c', 22);
+      blip(880, 1760, .4, .1);
+    }
+    if (timeLeft <= 0 && state === 'play') { timeLeft = 0; lift(); endGame(true); }
+  }
+
+  for (let i = pending.length - 1; i >= 0; i--) {
+    if ((pending[i].t -= dt) <= 0) { fish.push(makeFish(pending[i].type, true)); pending.splice(i, 1); }
+  }
+
+  const m = 36 * S;
+  for (const f of fish) {
+    const T = TYPES[f.t];
+    f.wander = Math.max(-1, Math.min(1, f.wander + (Math.random() - .5) * dt * 4));
+    f.a += f.wander * dt * 1.4;
+    if (f.x < m || f.x > W - m || f.y < m || f.y > H - m) f.a += angDiff(Math.atan2(H / 2 - f.y, W / 2 - f.x), f.a) * dt * 3;
+    f.flee -= dt;
+    const sp = T.speed * S * (f.flee > 0 ? 3.2 : 1);
+    f.phase += dt * (5 + sp / (12 * S));
+    f.x = Math.max(2, Math.min(W - 2, f.x + Math.cos(f.a) * sp * dt));
+    f.y = Math.max(2, Math.min(H - 2, f.y + Math.sin(f.a) * sp * dt));
+  }
+
+  for (const r of ripples) { r.r += dt * (r.big ? 90 : 60) * S; r.life -= dt * 1.1; }
+  ripples = ripples.filter(r => r.life > 0);
+  for (const p of popups) { p.y -= dt * 30 * S; p.life -= dt * .8; }
+  popups = popups.filter(p => p.life > 0);
+  for (const fl of flying) fl.t += dt;
+  flying = flying.filter(fl => fl.t < 1);
+}
+
+// ---------- draw ----------
+function drawWater() {
+  const g = ctx.createRadialGradient(W * .5, H * .4, 0, W * .5, H * .5, Math.max(W, H) * .75);
+  g.addColorStop(0, '#2b7aa3'); g.addColorStop(.6, '#185476'); g.addColorStop(1, '#0b2b45');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < 3; i++) {
+    const x = W * (.2 + .3 * i) + Math.sin(clock * .7 + i * 2) * 10 * S, y = H * (.1 + .04 * (i % 2));
+    const lg = ctx.createRadialGradient(x, y, 0, x, y, 90 * S);
+    lg.addColorStop(0, 'rgba(255,170,80,.22)'); lg.addColorStop(1, 'rgba(255,170,80,0)');
+    ctx.fillStyle = lg; ctx.save(); ctx.translate(x, y); ctx.scale(1.6, .55); ctx.translate(-x, -y);
+    ctx.fillRect(x - 90 * S, y - 90 * S, 180 * S, 180 * S); ctx.restore();
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,.045)'; ctx.lineWidth = 2 * S;
+  for (let k = 0; k < 8; k++) {
+    ctx.beginPath();
+    for (let x = 0; x <= W; x += 12) {
+      const y = H * (k + .5) / 8 + Math.sin(x * .018 / S + clock * .9 + k * 1.7) * 7 * S;
+      x ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawFish(f, scale = 1, alpha = 1) {
+  const T = TYPES[f.t], L = T.len * S * f.k * scale, sw = Math.sin(f.phase) * .32;
+  ctx.save(); ctx.globalAlpha = alpha; ctx.translate(f.x, f.y); ctx.rotate(f.a);
+
+  ctx.fillStyle = 'rgba(0,12,28,.28)';
+  ctx.beginPath(); ctx.ellipse(5 * S * scale, 8 * S * scale, L * .48, L * .24, 0, 0, TAU); ctx.fill();
+
+  ctx.save(); ctx.translate(-L * .32, 0); ctx.rotate(sw);
+  const tl = L * T.tail;
+  ctx.fillStyle = T.fin; ctx.beginPath(); ctx.moveTo(0, 0);
+  ctx.bezierCurveTo(-tl * .4, -tl * .15, -tl * .8, -tl * .55, -tl, -tl * .42);
+  ctx.quadraticCurveTo(-tl * .62, 0, -tl, tl * .42);
+  ctx.bezierCurveTo(-tl * .8, tl * .55, -tl * .4, tl * .15, 0, 0);
+  ctx.fill(); ctx.restore();
+
+  for (const s of [-1, 1]) {
+    ctx.save(); ctx.translate(L * .06, s * L * .17); ctx.rotate(s * (.9 + Math.sin(f.phase * 1.3) * .25));
+    ctx.beginPath(); ctx.ellipse(-L * .08, 0, L * .13, L * .05, 0, 0, TAU); ctx.fill(); ctx.restore();
+  }
+
+  if (T.glow) { ctx.shadowColor = 'rgba(255,210,90,.8)'; ctx.shadowBlur = 16 * S; }
+  ctx.fillStyle = T.body; ctx.beginPath(); ctx.ellipse(0, 0, L * .42, L * T.girth, 0, 0, TAU); ctx.fill();
+  ctx.shadowBlur = 0;
+  if (T.patch) {
+    ctx.save(); ctx.clip(); ctx.fillStyle = T.patch;
+    ctx.beginPath(); ctx.ellipse(L * (.1 + f.seed * .1), -L * .05, L * .22, L * .16, f.seed, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-L * .24, L * .07 * Math.sign(f.seed || 1), L * .12, L * .1, 0, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = 1.5 * S * scale;
+  ctx.beginPath(); ctx.moveTo(L * .3, 0); ctx.quadraticCurveTo(0, -L * .03, -L * .3, 0); ctx.stroke();
+
+  if (T.eyes) {
+    for (const s of [-1, 1]) {
+      ctx.fillStyle = '#2c2734'; ctx.beginPath(); ctx.arc(L * .28, s * L * .2, L * .09, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#05040a'; ctx.beginPath(); ctx.arc(L * .3, s * L * .21, L * .055, 0, TAU); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.beginPath(); ctx.arc(L * .31, s * L * .19, L * .018, 0, TAU); ctx.fill();
+    }
+  } else {
+    ctx.fillStyle = '#140c0c';
+    for (const s of [-1, 1]) { ctx.beginPath(); ctx.arc(L * .3, s * L * .1, L * .035, 0, TAU); ctx.fill(); }
+  }
+  ctx.restore();
+}
+
+function poiPath(R) { ctx.beginPath(); ctx.arc(poi.x, poi.y, R, 0, TAU); }
+function drawPaper(R) {
+  const strength = 1 - poi.wet;
+  ctx.save();
+  if (poi.broken) {
+    ctx.beginPath(); ctx.arc(poi.x, poi.y, R, 0, TAU);
+    const n = poi.jag.length;
+    for (let i = n; i >= 0; i--) {
+      const a = (i % n) / n * TAU, rr = R * (1 - poi.jag[i % n]);
+      i === n ? ctx.moveTo(poi.x + Math.cos(a) * rr, poi.y + Math.sin(a) * rr) : ctx.lineTo(poi.x + Math.cos(a) * rr, poi.y + Math.sin(a) * rr);
+    }
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(225,225,215,.55)'; ctx.fill('evenodd');
+    ctx.restore(); return;
+  }
+  poiPath(R);
+  ctx.fillStyle = poi.sub ? `rgba(220,232,240,${.16 + .2 * strength})` : `rgba(246,238,220,${.5 + .42 * strength})`;
+  ctx.fill();
+  if (poi.wet > .2) {
+    ctx.clip();
+    ctx.fillStyle = `rgba(30,60,90,${(poi.wet - .2) * .45})`;
+    for (const b of poi.blots) { ctx.beginPath(); ctx.arc(poi.x + b.dx * R, poi.y + b.dy * R, b.r * R * (.5 + poi.wet), 0, TAU); ctx.fill(); }
+  }
+  ctx.restore();
+}
+function drawFrame(R) {
+  ctx.save(); ctx.translate(poi.x, poi.y);
+  ctx.rotate(Math.PI * .25);
+  ctx.fillStyle = '#d63d2c';
+  if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(R * .94, -5 * S, R * 1.5, 10 * S, 4 * S); ctx.fill(); }
+  else ctx.fillRect(R * .94, -5 * S, R * 1.5, 10 * S);
+  ctx.restore();
+  ctx.strokeStyle = '#d63d2c'; ctx.lineWidth = 5 * S; poiPath(R); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1.2 * S; ctx.beginPath(); ctx.arc(poi.x, poi.y, R - 1.5 * S, Math.PI * 1.1, Math.PI * 1.6); ctx.stroke();
+}
+
+function draw() {
+  drawWater();
+  for (const r of ripples) {
+    ctx.strokeStyle = `rgba(255,255,255,${r.life * .35})`; ctx.lineWidth = 2 * S;
+    ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, TAU); ctx.stroke();
+  }
+  const showPoi = state === 'play';
+  const under = showPoi && (poi.sub || poi.broken);
+  if (under) drawPaper(poi.R);
+  for (const f of fish) drawFish(f);
+  if (under) drawFrame(poi.R);
+  if (showPoi && !under) {
+    const R = poi.R * 1.06;
+    ctx.fillStyle = 'rgba(0,10,25,.28)'; ctx.beginPath(); ctx.arc(poi.x + 14 * S, poi.y + 20 * S, R, 0, TAU); ctx.fill();
+    drawPaper(R); drawFrame(R);
+  }
+  for (const fl of flying) {
+    const t = fl.t, f = fl.f;
+    if (t < .3) { f.x = fl.sx; f.y = fl.sy; drawFish(f, 1 + t, 1); }
+    else {
+      const u = (t - .3) / .7, e = u * u;
+      f.x = fl.sx + (W - 30 * S - fl.sx) * e; f.y = fl.sy + (24 * S - fl.sy) * e;
+      drawFish(f, 1.3 - u * .9, 1 - u * .8);
+    }
+  }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const p of popups) {
+    ctx.font = `900 ${p.size * S}px ${FONT}`;
+    ctx.globalAlpha = Math.min(1, p.life * 1.6);
+    ctx.lineWidth = 4 * S; ctx.strokeStyle = 'rgba(10,20,40,.6)'; ctx.strokeText(p.text, p.x, p.y);
+    ctx.fillStyle = p.color; ctx.fillText(p.text, p.x, p.y);
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ---------- HUD ----------
+let lastHud = '';
+function hud() {
+  const strength = state === 'play' && !poi.broken ? Math.max(0, 1 - poi.wet) : (state === 'play' ? 0 : 1);
+  const key = [Math.ceil(timeLeft), score, best, poisLeft, Math.round(strength * 100)].join();
+  if (key === lastHud) return; lastHud = key;
+  $('time').textContent = Math.ceil(timeLeft);
+  $('score').textContent = score;
+  $('best').textContent = best;
+  [...$('pois').children].forEach((el, i) => el.classList.toggle('used', i >= poisLeft));
+  $('gaugeBar').style.transform = `scaleX(${strength})`;
+  $('gauge').classList.toggle('low', strength < .3);
+}
+
+let last = 0;
+function frame(now) {
+  const dt = Math.min(.05, (now - last) / 1000 || 0); last = now;
+  if (W > 0) { update(dt); draw(); hud(); }
+  requestAnimationFrame(frame);
+}
+
+function boot(data) {
+  if (data && data.best > best) best = data.best;
+  resize(); fillPond(); freshPoi();
+  new ResizeObserver(resize).observe(cv);
+  requestAnimationFrame(frame);
+}
+try { window.claude?.hot?.snapshot?.(() => ({best})); } catch (e) {}
+window.claude?.hot?.ready ? window.claude.hot.ready(boot) : boot(window.claude?.hot?.data ?? {});
+})();
+</script>
+
+</html>

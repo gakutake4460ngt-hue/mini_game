@@ -1,0 +1,634 @@
+<title>深淵ソナー</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Zen+Kaku+Gothic+New:wght@400;700&display=swap">
+<style>
+/* Layout: one-screen sonar scope, canvas centered with a DOM overlay for title and results. Single deliberate dark look. */
+:root {
+  --ink: #050a14;
+  --ink-2: #0b1626;
+  --sonar: #9adbe8;
+  --pearl: #f4e7c6;
+  --hunter: #ff8a5c;
+  --muted: #5f7a93;
+  --font-display: "DotGothic16", "Hiragino Kaku Gothic ProN", monospace;
+  --font-body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  background: var(--ink);
+  color: var(--sonar);
+  font-family: var(--font-body);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 12px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+#app { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+#stage { position: relative; }
+canvas { display: block; touch-action: none; border-radius: 6px; box-shadow: 0 0 0 1px #9adbe822, 0 30px 80px #000c; cursor: crosshair; }
+.overlay {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 18px; padding: 28px; box-sizing: border-box; text-align: center;
+  background: radial-gradient(ellipse at 50% 40%, #0b1626cc, #050a14f2 70%);
+  border-radius: 6px;
+}
+.eyebrow { font-family: var(--font-display); font-size: 12px; letter-spacing: .3em; color: var(--muted); }
+h1 {
+  font-family: var(--font-display); font-weight: 400; margin: 0;
+  font-size: clamp(40px, 11vw, 64px); letter-spacing: .08em; line-height: 1.1;
+  text-wrap: balance; color: var(--sonar);
+  text-shadow: 0 0 18px #9adbe866;
+}
+.lede { margin: 0; max-width: 26em; line-height: 1.8; color: #c9e4ec; font-size: 15px; }
+.rules { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 13px; line-height: 1.6; color: #a9c3cf; text-align: left; max-width: 24em; }
+.rules li { display: grid; grid-template-columns: 5.5em 1fr; gap: 10px; }
+.rules b { font-family: var(--font-display); font-weight: 400; color: var(--sonar); letter-spacing: .05em; }
+.rules .warn b { color: var(--hunter); }
+.btn {
+  font-family: var(--font-display); font-size: 18px; letter-spacing: .2em;
+  color: var(--ink); background: var(--sonar); border: 0; border-radius: 999px;
+  padding: 12px 34px; cursor: pointer;
+  box-shadow: 0 0 0 0 #9adbe866; animation: pulse 2.2s ease-out infinite;
+}
+.btn:focus-visible { outline: 2px solid var(--pearl); outline-offset: 4px; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 #9adbe866; } 100% { box-shadow: 0 0 0 26px #9adbe800; } }
+.result { display: grid; grid-template-columns: auto auto; gap: 6px 22px; font-family: var(--font-display); font-variant-numeric: tabular-nums; align-items: baseline; }
+.result dt { color: var(--muted); font-size: 13px; text-align: right; letter-spacing: .1em; }
+.result dd { margin: 0; text-align: left; font-size: 22px; color: var(--sonar); }
+.result dd.big { font-size: 40px; }
+.result .new { color: var(--pearl); font-size: 13px; margin-left: 8px; }
+.cause { margin: 0; color: var(--hunter); font-family: var(--font-display); letter-spacing: .1em; }
+.hint { font-size: 12px; color: var(--muted); margin: 0; }
+#mute {
+  position: absolute; right: 10px; bottom: 10px;
+  font-family: var(--font-display); font-size: 12px; letter-spacing: .1em;
+  background: #0b1626cc; color: var(--muted); border: 1px solid #5f7a9355; border-radius: 999px;
+  padding: 5px 12px; cursor: pointer; z-index: 2;
+}
+#mute:focus-visible { outline: 2px solid var(--sonar); }
+@media (prefers-reduced-motion: reduce) { .btn { animation: none; } }
+</style>
+
+<div id="app">
+  <div id="stage">
+    <canvas id="c" aria-label="深淵ソナーのゲーム画面"></canvas>
+
+    <div class="overlay" id="title">
+      <div class="eyebrow">DEEP TRENCH · 12 kHz</div>
+      <h1>深淵ソナー</h1>
+      <p class="lede">光の届かない海溝を、音だけを頼りに潜る。<br>ソナーを打つと壁と真珠が浮かび上がる。<br>ただし、その音は捕食者にも聞こえている。</p>
+      <ul class="rules">
+        <li><b>移動</b><span>矢印キー / WASD、または画面をドラッグ</span></li>
+        <li><b>ソナー</b><span>スペース、または画面をタップ。打つたびに電力を使う</span></li>
+        <li><b>真珠</b><span>拾うと電力が回復し、得点になる</span></li>
+        <li class="warn"><b>捕食者</b><span>ソナーの発信地点へ泳いでくる。黙っていれば、ゆっくりにしか寄ってこない</span></li>
+      </ul>
+      <button class="btn" id="startBtn" type="button">潜航開始</button>
+    </div>
+
+    <div class="overlay" id="over" hidden>
+      <div class="eyebrow">SIGNAL LOST</div>
+      <p class="cause" id="cause">船体圧壊</p>
+      <dl class="result">
+        <dt>到達深度</dt><dd class="big" id="rDepth">0 m</dd>
+        <dt>真珠</dt><dd id="rPearl">0</dd>
+        <dt>自己ベスト</dt><dd id="rBest">0 m</dd>
+      </dl>
+      <button class="btn" id="retryBtn" type="button">もう一度潜る</button>
+      <p class="hint">スペースキーでも再開できます</p>
+    </div>
+
+    <button id="mute" type="button">音 ON</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const W = 480, H = 720, ROW = 16;
+  const COL = { ink: '#050a14', sonar: '154,219,232', pearl: '244,231,198', hunter: '255,138,92', muted: '#5f7a93' };
+  const PING_SPEED = 540, PING_MAX = 400, PING_COST = 30;
+  const FONT = '"DotGothic16", "Hiragino Kaku Gothic ProN", monospace';
+
+  const cv = document.getElementById('c');
+  const ctx = cv.getContext('2d');
+  const stage = document.getElementById('stage');
+  const titleEl = document.getElementById('title');
+  const overEl = document.getElementById('over');
+  const muteBtn = document.getElementById('mute');
+  let scale = 1;
+
+  function resize() {
+    const app = document.getElementById('app');
+    const aw = app.clientWidth, ah = app.clientHeight;
+    scale = Math.min(aw / W, ah / H);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const cw = Math.floor(W * scale), ch = Math.floor(H * scale);
+    cv.style.width = cw + 'px'; cv.style.height = ch + 'px';
+    stage.style.width = cw + 'px'; stage.style.height = ch + 'px';
+    cv.width = Math.floor(cw * dpr); cv.height = Math.floor(ch * dpr);
+    ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  let best = 0;
+  try { best = +localStorage.getItem('abyss-sonar-best') || 0; } catch (e) {}
+
+  // ---------- audio ----------
+  let ac = null, muted = false;
+  function audio() {
+    if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+    if (ac && ac.state === 'suspended') ac.resume();
+    return ac;
+  }
+  function tone(freq, freqEnd, dur, vol, type = 'sine', delay = 0) {
+    if (muted || !ac) return;
+    const t = ac.currentTime + delay;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    o.frequency.exponentialRampToValueAtTime(freqEnd, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(ac.destination);
+    o.start(t); o.stop(t + dur + 0.05);
+  }
+  const sfx = {
+    ping() { tone(1500, 1100, 0.9, 0.12); tone(1500, 1100, 0.7, 0.04, 'sine', 0.28); tone(1500, 1100, 0.5, 0.015, 'sine', 0.56); },
+    pearl() { tone(1320, 1320, 0.25, 0.08, 'triangle'); tone(1980, 1980, 0.35, 0.06, 'triangle', 0.08); },
+    hit() { tone(140, 40, 0.5, 0.3, 'sawtooth'); tone(90, 30, 0.6, 0.2, 'square', 0.02); },
+    empty() { tone(300, 200, 0.12, 0.05, 'square'); },
+    growl() { tone(70, 55, 0.8, 0.07, 'sawtooth'); }
+  };
+  muteBtn.addEventListener('click', () => { muted = !muted; muteBtn.textContent = muted ? '音 OFF' : '音 ON'; });
+
+  // ---------- world ----------
+  let state = 'title';
+  let P, rows, rocks, pearls, hunters, pings, bubbles, flashes;
+  let camY, t, speed, player, energy, hull, pearlCount, invuln, hunterTimer, shake, cause;
+
+  function reset() {
+    P = Array.from({ length: 5 }, () => Math.random() * Math.PI * 2);
+    rows = new Map(); rocks = []; pearls = []; hunters = []; pings = []; bubbles = []; flashes = [];
+    camY = 0; t = 0; speed = 50; energy = 100; hull = 3; pearlCount = 0; invuln = 0; hunterTimer = 6; shake = 0;
+    player = { x: W / 2, y: 220, vx: 0, vy: 0, face: 1 };
+    cause = '';
+  }
+
+  const depthF = y => Math.min(1, y / 30000);
+
+  function row(i) {
+    let o = rows.get(i);
+    if (o) return o;
+    const c = W / 2 + 85 * Math.sin(i * 0.019 + P[0]) + 45 * Math.sin(i * 0.051 + P[1]) + 18 * Math.sin(i * 0.13 + P[2]);
+    const f = depthF(i * ROW);
+    let h = 175 - 95 * f + 28 * Math.sin(i * 0.034 + P[3]);
+    if (i < 50) h = Math.max(h, 215 - Math.max(0, i - 30) * 2);
+    h = Math.max(68, h);
+    let l = c - h, r = c + h;
+    if (l < 10) { r += 10 - l; l = 10; }
+    if (r > W - 10) { l -= r - (W - 10); r = W - 10; }
+    l = Math.max(10, l);
+    o = { l, r, litL: 0, litR: 0 };
+    rows.set(i, o);
+    if (i > 45) spawnStuff(i, o, f);
+    return o;
+  }
+
+  function spawnStuff(i, o, f) {
+    const y = i * ROW, gap = o.r - o.l;
+    if (Math.random() < 0.03 + 0.03 * f) {
+      const rad = 12 + Math.random() * 18;
+      if (gap > 2 * rad + 110) {
+        const x = o.l + rad + 50 + Math.random() * (gap - 2 * rad - 100);
+        const pts = Array.from({ length: 9 }, () => 0.75 + Math.random() * 0.4);
+        rocks.push({ x, y, rad, lit: 0, pts });
+      }
+    }
+    if (Math.random() < 0.022) {
+      pearls.push({ x: o.l + 24 + Math.random() * (gap - 48), y: y + 8, lit: 0, ph: Math.random() * 6 });
+    }
+  }
+
+  function wallAt(y) {
+    const fi = y / ROW, i = Math.floor(fi), k = fi - i;
+    const a = row(i), b = row(i + 1);
+    return { l: a.l + (b.l - a.l) * k, r: a.r + (b.r - a.r) * k };
+  }
+
+  function spawnHunter() {
+    const y = camY + H + 60 + Math.random() * 120;
+    const w = wallAt(y);
+    hunters.push({ x: w.l + 20 + Math.random() * (w.r - w.l - 40), y, vx: 0, vy: 0, alert: 0, tx: 0, ty: 0, flee: 0, ex: 0, ey: 0, elit: 0, ph: Math.random() * 6 });
+  }
+
+  function ping() {
+    if (energy < PING_COST) { sfx.empty(); flashes.push({ text: '電力不足', life: 0.8 }); return; }
+    energy -= PING_COST;
+    pings.push({ x: player.x, y: player.y, r: 0, prev: 0 });
+    sfx.ping();
+    let heard = false;
+    for (const h of hunters) {
+      if (Math.hypot(h.x - player.x, h.y - player.y) < 560) {
+        h.alert = 1; h.tx = player.x; h.ty = player.y; heard = true;
+      }
+    }
+    if (heard) sfx.growl();
+  }
+
+  // ---------- input ----------
+  const keys = {};
+  window.addEventListener('keydown', e => {
+    const k = e.key;
+    if ([' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(k)) e.preventDefault();
+    if (k === ' ' || k === 'Enter') {
+      if (e.repeat) return;
+      if (state === 'play' && k === ' ') ping();
+      else if (state !== 'play') start();
+      return;
+    }
+    if (k === 'm' || k === 'M') muteBtn.click();
+    keys[k.toLowerCase()] = true;
+  });
+  window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+  let drag = null;
+  cv.addEventListener('pointerdown', e => {
+    if (state !== 'play') return;
+    cv.setPointerCapture(e.pointerId);
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now(), moved: false };
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!drag || e.pointerId !== drag.id || state !== 'play') return;
+    const dx = (e.clientX - drag.x) / scale, dy = (e.clientY - drag.y) / scale;
+    drag.x = e.clientX; drag.y = e.clientY;
+    if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 10) drag.moved = true;
+    if (drag.moved) { player.x += dx * 1.15; player.y += dy * 1.15; if (Math.abs(dx) > 0.5) player.face = Math.sign(dx); }
+  });
+  const endDrag = e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    if (!drag.moved && performance.now() - drag.t < 300 && state === 'play') ping();
+    drag = null;
+  };
+  cv.addEventListener('pointerup', endDrag);
+  cv.addEventListener('pointercancel', e => { drag = null; });
+
+  function start() {
+    audio();
+    reset();
+    state = 'play';
+    titleEl.hidden = true; overEl.hidden = true;
+    cv.focus?.();
+  }
+  document.getElementById('startBtn').addEventListener('click', start);
+  document.getElementById('retryBtn').addEventListener('click', start);
+
+  function gameOver() {
+    state = 'over';
+    const depth = Math.floor(player.y / 10);
+    const isNew = depth > best;
+    if (isNew) { best = depth; try { localStorage.setItem('abyss-sonar-best', String(best)); } catch (e) {} }
+    document.getElementById('cause').textContent = cause;
+    document.getElementById('rDepth').textContent = depth.toLocaleString() + ' m';
+    document.getElementById('rPearl').textContent = pearlCount;
+    document.getElementById('rBest').innerHTML = best.toLocaleString() + ' m' + (isNew ? '<span class="new">更新</span>' : '');
+    setTimeout(() => { overEl.hidden = false; document.getElementById('retryBtn').focus(); }, 900);
+  }
+
+  function damage(why) {
+    if (invuln > 0) return;
+    hull--; invuln = 1.6; shake = 0.4; sfx.hit();
+    if (hull <= 0) { cause = why; gameOver(); }
+  }
+
+  // ---------- update ----------
+  function update(dt) {
+    t += dt;
+    const f = depthF(player.y);
+    speed = 50 + Math.min(95, t * 1.1);
+    camY += speed * dt;
+    energy = Math.min(100, energy + 12 * dt);
+    invuln = Math.max(0, invuln - dt);
+    shake = Math.max(0, shake - dt);
+
+    // movement
+    let ix = (keys['arrowright'] || keys['d'] ? 1 : 0) - (keys['arrowleft'] || keys['a'] ? 1 : 0);
+    let iy = (keys['arrowdown'] || keys['s'] ? 1 : 0) - (keys['arrowup'] || keys['w'] ? 1 : 0);
+    const acc = 900, max = 210;
+    player.vx += ix * acc * dt; player.vy += iy * acc * dt;
+    player.vx *= Math.pow(0.02, dt); player.vy *= Math.pow(0.02, dt);
+    const sp = Math.hypot(player.vx, player.vy);
+    if (sp > max) { player.vx *= max / sp; player.vy *= max / sp; }
+    player.x += player.vx * dt; player.y += player.vy * dt + speed * dt;
+    if (ix) player.face = ix;
+    player.y = Math.max(camY + 70, Math.min(camY + H - 60, player.y));
+
+    // walls
+    const pr = 9, w = wallAt(player.y);
+    if (player.x - pr < w.l) { player.x = w.l + pr + 6; player.vx = Math.abs(player.vx) * 0.5 + 60; damage('岩壁に衝突'); }
+    if (player.x + pr > w.r) { player.x = w.r - pr - 6; player.vx = -Math.abs(player.vx) * 0.5 - 60; damage('岩壁に衝突'); }
+    for (const r of rocks) {
+      const dx = player.x - r.x, dy = player.y - r.y, d = Math.hypot(dx, dy), min = r.rad * 0.95 + pr;
+      if (d < min && d > 0) {
+        player.x = r.x + dx / d * (min + 4); player.y = r.y + dy / d * (min + 4);
+        player.vx = dx / d * 140; player.vy = dy / d * 140;
+        r.lit = 1; damage('岩塊に衝突');
+      }
+    }
+
+    // pings
+    const iTop = Math.floor(camY / ROW) - 2, iBot = Math.ceil((camY + H) / ROW) + 4;
+    for (const p of pings) {
+      p.prev = p.r; p.r += PING_SPEED * dt;
+      const i0 = Math.max(iTop, Math.floor((p.y - p.r) / ROW)), i1 = Math.min(iBot, Math.ceil((p.y + p.r) / ROW));
+      for (let i = i0; i <= i1; i++) {
+        const o = row(i), y = i * ROW;
+        const dL = Math.hypot(o.l - p.x, y - p.y), dR = Math.hypot(o.r - p.x, y - p.y);
+        if (dL > p.prev && dL <= p.r) o.litL = 1;
+        if (dR > p.prev && dR <= p.r) o.litR = 1;
+      }
+      for (const r of rocks) { const d = Math.hypot(r.x - p.x, r.y - p.y) - r.rad; if (d > p.prev && d <= p.r) r.lit = 1; }
+      for (const q of pearls) { const d = Math.hypot(q.x - p.x, q.y - p.y); if (d > p.prev && d <= p.r) q.lit = 1; }
+      for (const h of hunters) { const d = Math.hypot(h.x - p.x, h.y - p.y); if (d > p.prev && d <= p.r) { h.ex = h.x; h.ey = h.y; h.elit = 1; } }
+    }
+    pings = pings.filter(p => p.r < PING_MAX);
+
+    // lamp: a faint glow around the sub
+    const lamp = 64;
+    for (let i = Math.floor((player.y - lamp) / ROW); i <= Math.ceil((player.y + lamp) / ROW); i++) {
+      const o = row(i), y = i * ROW;
+      const dL = Math.hypot(o.l - player.x, y - player.y), dR = Math.hypot(o.r - player.x, y - player.y);
+      if (dL < lamp) o.litL = Math.max(o.litL, 0.55 * (1 - dL / lamp));
+      if (dR < lamp) o.litR = Math.max(o.litR, 0.55 * (1 - dR / lamp));
+    }
+
+    // decay
+    const decay = 0.42 * dt;
+    for (let i = iTop; i <= iBot; i++) { const o = row(i); o.litL = Math.max(0, o.litL - decay); o.litR = Math.max(0, o.litR - decay); }
+    for (const r of rocks) { r.lit = Math.max(0, r.lit - decay); const d = Math.hypot(r.x - player.x, r.y - player.y) - r.rad; if (d < lamp) r.lit = Math.max(r.lit, 0.55 * (1 - d / lamp)); }
+    for (const q of pearls) {
+      q.lit = Math.max(0, q.lit - decay * 0.8);
+      if (Math.hypot(q.x - player.x, q.y - player.y) < 18) {
+        q.taken = true; pearlCount++; energy = Math.min(100, energy + 25); sfx.pearl();
+        flashes.push({ text: '真珠 +1', life: 0.9, x: q.x, y: q.y });
+      }
+    }
+    pearls = pearls.filter(q => !q.taken && q.y > camY - 60);
+    rocks = rocks.filter(r => r.y > camY - 80);
+
+    // hunters
+    hunterTimer -= dt;
+    if (hunterTimer <= 0) { spawnHunter(); hunterTimer = 6.5 - 4 * f + Math.random() * 2; }
+    for (const h of hunters) {
+      let tx, ty, hs;
+      if (h.flee > 0) { h.flee -= dt; tx = h.x + (h.x - player.x); ty = h.y + (h.y - player.y); hs = 90; }
+      else if (h.alert) { tx = h.tx; ty = h.ty; hs = 115 + 45 * f; if (Math.hypot(tx - h.x, ty - h.y) < 14) h.alert = 0; }
+      else { tx = player.x; ty = player.y; hs = 24 + 22 * f; }
+      const dx = tx - h.x, dy = ty - h.y, d = Math.hypot(dx, dy) || 1;
+      h.vx += (dx / d * hs - h.vx) * Math.min(1, dt * 2.5);
+      h.vy += (dy / d * hs - h.vy) * Math.min(1, dt * 2.5);
+      h.x += h.vx * dt + Math.sin(t * 2 + h.ph) * 12 * dt;
+      h.y += h.vy * dt;
+      const hw = wallAt(h.y);
+      h.x = Math.max(hw.l + 14, Math.min(hw.r - 14, h.x));
+      h.elit = Math.max(0, h.elit - dt * 0.6);
+      const pd = Math.hypot(h.x - player.x, h.y - player.y);
+      if (pd < lamp + 10) { h.ex = h.x; h.ey = h.y; h.elit = Math.max(h.elit, 0.8 * (1 - pd / (lamp + 10))); }
+      if (pd < 22 && h.flee <= 0) { h.flee = 2.5; h.ex = h.x; h.ey = h.y; h.elit = 1; damage('捕食者に捕まった'); }
+    }
+    hunters = hunters.filter(h => h.y > camY - 200 && h.y < camY + H + 400);
+
+    // bubbles
+    if (Math.random() < dt * 9) bubbles.push({ x: player.x - player.face * 12, y: player.y + (Math.random() - 0.5) * 4, r: 1 + Math.random() * 2, life: 1 });
+    for (const b of bubbles) { b.y -= 30 * dt; b.x += Math.sin(t * 5 + b.y) * 6 * dt; b.life -= dt * 0.9; }
+    bubbles = bubbles.filter(b => b.life > 0);
+    for (const fl of flashes) fl.life -= dt;
+    flashes = flashes.filter(fl => fl.life > 0);
+
+    for (const k of rows.keys()) if (k < iTop - 4) rows.delete(k);
+  }
+
+  // ---------- draw ----------
+  const rgba = (c, a) => `rgba(${c},${a.toFixed(3)})`;
+
+  function draw() {
+    const sy = state === 'title' ? 0 : camY;
+    ctx.save();
+    if (shake > 0) ctx.translate((Math.random() - 0.5) * 10 * shake, (Math.random() - 0.5) * 10 * shake);
+
+    const f = depthF(sy + H / 2);
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, `rgb(${10 - 6 * f},${22 - 14 * f},${38 - 22 * f})`);
+    g.addColorStop(1, `rgb(${5 - 3 * f},${10 - 6 * f},${20 - 12 * f})`);
+    ctx.fillStyle = g; ctx.fillRect(-20, -20, W + 40, H + 40);
+
+    // scope grid and depth ticks
+    ctx.strokeStyle = rgba(COL.sonar, 0.045); ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = 40; x < W; x += 80) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+    const off = -(sy % 80);
+    for (let y = off; y < H; y += 80) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
+    ctx.stroke();
+    ctx.font = `11px ${FONT}`; ctx.fillStyle = rgba(COL.sonar, 0.22); ctx.textAlign = 'right';
+    const firstTick = Math.ceil(sy / 500) * 500;
+    for (let y = firstTick; y < sy + H; y += 500) {
+      ctx.fillRect(W - 14, y - sy, 10, 1);
+      ctx.fillText((y / 10) + ' m', W - 18, y - sy + 4);
+    }
+
+    if (state !== 'title') drawWorld(sy);
+    else drawTitleScene();
+
+    ctx.restore();
+    if (state === 'play' || state === 'over') drawHud();
+  }
+
+  function drawWorld(sy) {
+    const i0 = Math.floor(sy / ROW) - 1, i1 = Math.ceil((sy + H) / ROW) + 1;
+    // barely-there wall silhouette so the cave is never fully empty
+    ctx.fillStyle = rgba(COL.sonar, 0.018);
+    ctx.beginPath(); ctx.moveTo(0, i0 * ROW - sy);
+    for (let i = i0; i <= i1; i++) ctx.lineTo(row(i).l, i * ROW - sy);
+    ctx.lineTo(0, i1 * ROW - sy); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(W, i0 * ROW - sy);
+    for (let i = i0; i <= i1; i++) ctx.lineTo(row(i).r, i * ROW - sy);
+    ctx.lineTo(W, i1 * ROW - sy); ctx.fill();
+
+    ctx.lineWidth = 2; ctx.lineCap = 'round';
+    for (let i = i0; i < i1; i++) {
+      const a = row(i), b = row(i + 1), y0 = i * ROW - sy, y1 = y0 + ROW;
+      const aL = (a.litL + b.litL) / 2, aR = (a.litR + b.litR) / 2;
+      if (aL > 0.01) {
+        ctx.fillStyle = rgba(COL.sonar, aL * 0.14);
+        ctx.beginPath(); ctx.moveTo(0, y0); ctx.lineTo(a.l, y0); ctx.lineTo(b.l, y1); ctx.lineTo(0, y1); ctx.fill();
+        ctx.strokeStyle = rgba(COL.sonar, aL);
+        ctx.beginPath(); ctx.moveTo(a.l, y0); ctx.lineTo(b.l, y1); ctx.stroke();
+      }
+      if (aR > 0.01) {
+        ctx.fillStyle = rgba(COL.sonar, aR * 0.14);
+        ctx.beginPath(); ctx.moveTo(W, y0); ctx.lineTo(a.r, y0); ctx.lineTo(b.r, y1); ctx.lineTo(W, y1); ctx.fill();
+        ctx.strokeStyle = rgba(COL.sonar, aR);
+        ctx.beginPath(); ctx.moveTo(a.r, y0); ctx.lineTo(b.r, y1); ctx.stroke();
+      }
+    }
+
+    for (const r of rocks) {
+      if (r.lit < 0.01) continue;
+      ctx.beginPath();
+      r.pts.forEach((m, k) => {
+        const ang = k / r.pts.length * Math.PI * 2;
+        const x = r.x + Math.cos(ang) * r.rad * m, y = r.y - sy + Math.sin(ang) * r.rad * m;
+        k ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      });
+      ctx.closePath();
+      ctx.fillStyle = rgba(COL.sonar, r.lit * 0.14); ctx.fill();
+      ctx.strokeStyle = rgba(COL.sonar, r.lit); ctx.stroke();
+    }
+
+    for (const q of pearls) {
+      const tw = 0.05 + 0.05 * Math.sin(t * 3 + q.ph);
+      const a = Math.max(q.lit, tw);
+      const y = q.y - sy;
+      const gl = ctx.createRadialGradient(q.x, y, 0, q.x, y, 16);
+      gl.addColorStop(0, rgba(COL.pearl, a * 0.7)); gl.addColorStop(1, rgba(COL.pearl, 0));
+      ctx.fillStyle = gl; ctx.fillRect(q.x - 16, y - 16, 32, 32);
+      ctx.fillStyle = rgba(COL.pearl, a); ctx.beginPath(); ctx.arc(q.x, y, 4, 0, 7); ctx.fill();
+    }
+
+    for (const h of hunters) {
+      if (h.elit > 0.01) drawHunter(h.ex, h.ey - sy, h.elit, h.vx);
+      // the lure: always a faint, swaying point of light
+      const la = 0.16 + 0.1 * Math.sin(t * 2.6 + h.ph) + (h.alert ? 0.15 : 0);
+      const lx = h.x + Math.sign(h.vx || 1) * 16, ly = h.y - 14 - sy;
+      const gl = ctx.createRadialGradient(lx, ly, 0, lx, ly, 10);
+      gl.addColorStop(0, rgba(COL.hunter, la)); gl.addColorStop(1, rgba(COL.hunter, 0));
+      ctx.fillStyle = gl; ctx.fillRect(lx - 10, ly - 10, 20, 20);
+    }
+
+    for (const p of pings) {
+      const a = 1 - p.r / PING_MAX;
+      ctx.strokeStyle = rgba(COL.sonar, a * 0.55); ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(p.x, p.y - sy, p.r, 0, 7); ctx.stroke();
+      ctx.strokeStyle = rgba(COL.sonar, a * 0.18); ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.arc(p.x, p.y - sy, Math.max(0, p.r - 8), 0, 7); ctx.stroke();
+    }
+
+    for (const b of bubbles) {
+      ctx.strokeStyle = rgba(COL.sonar, b.life * 0.4); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(b.x, b.y - sy, b.r, 0, 7); ctx.stroke();
+    }
+
+    if (state === 'play' || state === 'over') drawSub(player.x, player.y - sy, player.face, state === 'over');
+
+    ctx.textAlign = 'center'; ctx.font = `13px ${FONT}`;
+    for (const fl of flashes) {
+      const a = Math.min(1, fl.life * 2);
+      if (fl.x != null) { ctx.fillStyle = rgba(COL.pearl, a); ctx.fillText(fl.text, fl.x, fl.y - sy - 14 - (1 - fl.life) * 20); }
+      else { ctx.fillStyle = rgba(COL.hunter, a); ctx.fillText(fl.text, player.x, player.y - sy - 22); }
+    }
+  }
+
+  function drawHunter(x, y, a, vx) {
+    const dir = Math.sign(vx || 1);
+    ctx.save(); ctx.translate(x, y); ctx.scale(dir, 1);
+    ctx.strokeStyle = rgba(COL.hunter, a); ctx.fillStyle = rgba(COL.hunter, a * 0.15); ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(18, -2); ctx.quadraticCurveTo(10, -14, -6, -10);
+    ctx.quadraticCurveTo(-16, -6, -20, 0); ctx.lineTo(-30, -9); ctx.lineTo(-28, 0); ctx.lineTo(-30, 9); ctx.lineTo(-20, 0);
+    ctx.quadraticCurveTo(-14, 10, 2, 11); ctx.quadraticCurveTo(14, 10, 18, 4);
+    ctx.lineTo(8, 2); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); // teeth
+    for (let k = 0; k < 3; k++) { ctx.moveTo(15 - k * 3.5, -1); ctx.lineTo(13.5 - k * 3.5, 3); }
+    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(4, -11); ctx.quadraticCurveTo(12, -22, 16, -14); ctx.stroke(); // lure stalk
+    ctx.fillStyle = rgba(COL.hunter, a); ctx.beginPath(); ctx.arc(6, -5, 1.6, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawSub(x, y, face, dead) {
+    if (invuln > 0 && !dead && Math.floor(t * 12) % 2) return;
+    const gl = ctx.createRadialGradient(x, y, 0, x, y, 64);
+    gl.addColorStop(0, rgba(COL.sonar, dead ? 0.04 : 0.12)); gl.addColorStop(1, rgba(COL.sonar, 0));
+    ctx.fillStyle = gl; ctx.fillRect(x - 64, y - 64, 128, 128);
+    ctx.save(); ctx.translate(x, y); ctx.scale(face, 1);
+    ctx.fillStyle = dead ? rgba(COL.sonar, 0.3) : `rgb(${COL.sonar})`;
+    ctx.beginPath(); ctx.ellipse(0, 0, 13, 6, 0, 0, 7); ctx.fill();
+    ctx.fillRect(-4, -10, 7, 5);
+    ctx.fillRect(1, -13, 1.5, 4);
+    ctx.fillRect(-17, -4, 3, 8);
+    ctx.fillStyle = COL.ink;
+    ctx.beginPath(); ctx.arc(6, -1, 2, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawTitleScene() {
+    // ambient preview: slow sweeping sonar over the dark
+    const cx = W / 2, cy = H * 0.5;
+    const r = (t * 160) % 460;
+    ctx.strokeStyle = rgba(COL.sonar, (1 - r / 460) * 0.35); ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.stroke();
+  }
+
+  function drawHud() {
+    ctx.save();
+    const depth = Math.floor(player.y / 10);
+    ctx.fillStyle = 'rgba(5,10,20,0.55)'; ctx.fillRect(0, 0, W, 58);
+    ctx.fillStyle = rgba(COL.sonar, 0.15); ctx.fillRect(0, 58, W, 1);
+    ctx.textAlign = 'left'; ctx.fillStyle = `rgb(${COL.sonar})`;
+    ctx.font = `26px ${FONT}`;
+    ctx.fillText(depth.toLocaleString(), 16, 34);
+    const dw = ctx.measureText(depth.toLocaleString()).width;
+    ctx.font = `13px ${FONT}`; ctx.fillStyle = COL.muted;
+    ctx.fillText('m', 20 + dw, 34);
+    ctx.fillText(`水圧 ${(depth / 10 + 1).toFixed(0)} atm`, 16, 50);
+
+    ctx.textAlign = 'right';
+    ctx.fillText('船体', W - 92, 22);
+    for (let k = 0; k < 3; k++) {
+      ctx.fillStyle = k < hull ? `rgb(${COL.sonar})` : 'rgba(95,122,147,0.3)';
+      ctx.fillRect(W - 82 + k * 22, 12, 16, 10);
+    }
+    ctx.fillStyle = COL.muted;
+    ctx.fillText('電力', W - 92, 44);
+    ctx.fillStyle = 'rgba(95,122,147,0.3)'; ctx.fillRect(W - 82, 35, 60, 8);
+    ctx.fillStyle = energy >= PING_COST ? `rgb(${COL.sonar})` : `rgb(${COL.hunter})`;
+    ctx.fillRect(W - 82, 35, 60 * energy / 100, 8);
+    ctx.fillStyle = 'rgba(5,10,20,0.9)'; ctx.fillRect(W - 82 + 60 * PING_COST / 100, 35, 1, 8);
+
+    ctx.textAlign = 'center'; ctx.fillStyle = `rgb(${COL.pearl})`;
+    ctx.beginPath(); ctx.arc(W / 2 - 22, 29, 4, 0, 7); ctx.fill();
+    ctx.font = `16px ${FONT}`; ctx.textAlign = 'left';
+    ctx.fillText('× ' + pearlCount, W / 2 - 12, 35);
+    ctx.restore();
+  }
+
+  // ---------- loop ----------
+  reset();
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    if (state === 'play') update(dt);
+    else {
+      t += dt;
+      if (state === 'over') {
+        for (const p of pings) p.r += PING_SPEED * dt;
+        pings = pings.filter(p => p.r < PING_MAX);
+        for (const h of hunters) h.elit = Math.max(0, h.elit - dt * 0.3);
+      }
+    }
+    draw();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>

@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>夜霧の灯台守</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@600;800&family=Zen+Kaku+Gothic+New:wght@400;700&family=DM+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: full-bleed night sea on canvas; a thin instrument strip floats at the top, the watch log card sits over the sea */
+:root {
+  --sea: #0b1d26;
+  --sea-deep: #06121a;
+  --lamp: #ffc96b;
+  --lamp-hot: #fff1cf;
+  --signal: #ff6a4d;
+  --ink: #d9e6e4;
+  --muted: #86a5a9;
+  --card: rgba(7, 20, 27, 0.86);
+  --rule: rgba(255, 201, 107, 0.22);
+  --f-display: "Shippori Mincho B1", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --f-body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+  --f-mono: "DM Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  background: var(--sea-deep);
+  color: var(--ink);
+  font-family: var(--f-body);
+  overflow: hidden;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+
+.hud {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 5;
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 26px;
+  padding-top: calc(12px + env(safe-area-inset-top, 0px));
+  padding-bottom: 10px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: linear-gradient(rgba(6, 18, 26, 0.75), rgba(6, 18, 26, 0));
+  pointer-events: none;
+}
+.cell { display: flex; flex-direction: column; gap: 2px; }
+.lbl { font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.16em; color: var(--muted); }
+.val { font-family: var(--f-mono); font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--ink); line-height: 1.1; }
+.val.clock { color: var(--lamp-hot); }
+.pips { display: flex; gap: 6px; height: 24px; align-items: center; }
+.pip { width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid var(--muted); }
+.pip.on { background: var(--signal); border-color: var(--signal); box-shadow: 0 0 10px var(--signal); }
+.tools { margin-left: auto; display: flex; gap: 8px; pointer-events: auto; }
+.tools button {
+  font-family: var(--f-body); font-size: 13px; font-weight: 700;
+  color: var(--ink); background: rgba(11, 29, 38, 0.7);
+  border: 1px solid var(--rule); border-radius: 2px;
+  padding: 7px 12px; cursor: pointer;
+}
+.tools button:hover:not(:disabled) { border-color: var(--lamp); color: var(--lamp-hot); }
+.tools button:disabled { opacity: 0.4; cursor: default; }
+.tools button:focus-visible, .start:focus-visible { outline: 2px solid var(--lamp-hot); outline-offset: 3px; }
+#flareN { font-family: var(--f-mono); color: var(--lamp); margin-left: 4px; }
+
+.banner {
+  position: fixed; z-index: 4; left: 50%; top: calc(84px + env(safe-area-inset-top, 0px));
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  font-family: var(--f-display); font-weight: 600; font-size: 16px; letter-spacing: 0.06em;
+  color: var(--lamp-hot); text-align: center; text-shadow: 0 0 14px rgba(255, 201, 107, 0.55);
+  opacity: 0; transition: opacity 0.6s; pointer-events: none;
+}
+.banner.show { opacity: 1; }
+
+.overlay {
+  position: fixed; inset: 0; z-index: 10;
+  display: grid; place-items: center;
+  padding-block: 24px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: radial-gradient(ellipse at center, rgba(6, 18, 26, 0.35), rgba(6, 18, 26, 0.75));
+  overflow-y: auto;
+}
+.card {
+  width: 100%; max-width: 31rem;
+  display: flex; flex-direction: column; gap: 16px;
+  padding: 28px 26px 24px;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-top: 2px solid var(--lamp);
+  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+}
+.eyebrow { margin: 0; font-family: var(--f-mono); font-size: 11.5px; letter-spacing: 0.16em; color: var(--muted); }
+.card h1 {
+  margin: 0; font-family: var(--f-display); font-weight: 800;
+  font-size: clamp(2.1rem, 8vw, 3.2rem); letter-spacing: 0.08em; line-height: 1.15;
+  color: var(--lamp-hot); text-shadow: 0 0 24px rgba(255, 201, 107, 0.45);
+  text-wrap: balance;
+}
+.lead { margin: 0; font-size: 15px; line-height: 1.85; max-width: 34em; }
+.rules { margin: 0; padding: 14px 0 0; list-style: none; display: grid; gap: 9px; border-top: 1px solid var(--rule); }
+.rules li { display: grid; grid-template-columns: 5.2em 1fr; gap: 10px; font-size: 13.5px; line-height: 1.6; }
+.rules b { font-family: var(--f-mono); font-weight: 500; font-size: 12px; letter-spacing: 0.06em; color: var(--lamp); padding-top: 2px; }
+.rules span { min-width: 0; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; padding-top: 4px; }
+.start {
+  font-family: var(--f-display); font-weight: 800; font-size: 18px; letter-spacing: 0.12em;
+  color: var(--sea-deep); background: var(--lamp);
+  border: none; border-radius: 2px; padding: 12px 26px; cursor: pointer;
+  box-shadow: 0 0 28px rgba(255, 201, 107, 0.35);
+}
+.start:hover { background: var(--lamp-hot); }
+.best { margin: 0; font-family: var(--f-mono); font-size: 12px; color: var(--muted); letter-spacing: 0.06em; }
+.best span { color: var(--ink); font-variant-numeric: tabular-nums; }
+.newbest { color: var(--lamp); font-weight: 700; }
+@media (max-width: 420px) {
+  .card { padding: 22px 18px 20px; }
+  .val { font-size: 19px; }
+  .hud { gap: 8px 18px; }
+}
+</style>
+
+<canvas id="game" aria-label="夜の湾と灯台"></canvas>
+
+<header class="hud" id="hud" hidden>
+  <div class="cell"><span class="lbl">時刻</span><span class="val clock" id="clock">22:00</span></div>
+  <div class="cell"><span class="lbl">得点</span><span class="val" id="score">0</span></div>
+  <div class="cell"><span class="lbl">座礁</span><span class="pips" id="pips"><i class="pip"></i><i class="pip"></i><i class="pip"></i></span></div>
+  <div class="tools">
+    <button id="flareBtn" type="button">照明弾<span id="flareN">2</span></button>
+    <button id="soundBtn" type="button">音 ON</button>
+  </div>
+</header>
+
+<div class="banner" id="banner"></div>
+
+<section class="overlay" id="overlay">
+  <div class="card">
+    <p class="eyebrow" id="eyebrow">灯質 Fl W 10s ・ 22:00 – 05:00 当直</p>
+    <h1 id="title">夜霧の灯台守</h1>
+    <p class="lead" id="lead">霧の夜、岩礁だらけの湾へ船が帰ってくる。灯に照らされた船だけが岩に気づいて舵を切れる。夜明けまで、一隻でも多く港へ導こう。</p>
+    <ul class="rules" id="rules">
+      <li><b>灯を回す</b><span>マウスや指で向きを示す。← → キーでも回せる。灯の回転には限りがある</span></li>
+      <li><b>見張り</b><span>照らされた船は約1.5秒、岩を避けながら進む。光を外すと直進に戻る</span></li>
+      <li><b>照明弾</b><span>スペースキーかボタンで湾全体を一瞬照らす。2時間ごとに1発補充</span></li>
+      <li><b>得点</b><span>小舟は1点、遅い貨物船は3点。座礁3隻で解任、05:00まで守れば勝ち</span></li>
+    </ul>
+    <div class="actions">
+      <button class="start" id="startBtn" type="button">当直につく</button>
+      <p class="best">最高得点 <span id="best">—</span></p>
+    </div>
+  </div>
+</section>
+
+<script>
+(() => {
+  const TAU = Math.PI * 2, DUR = 180, HOURS = 7, MAXW = 3, HALF = 0.27, LIT_MEM = 1.5, ROT = 3.3, IR = 34;
+  const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const LAMP = '255,201,107', HOT = '255,241,207', FOAM = '207,227,230', SIGNAL = '255,106,77';
+  const $ = id => document.getElementById(id);
+  const cv = $('game'), ctx = cv.getContext('2d');
+
+  let W, H, DPR, S, CX, CY;
+  function resize() {
+    DPR = Math.min(2, window.devicePixelRatio || 1);
+    W = innerWidth; H = innerHeight;
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+    S = Math.max(0.5, Math.min(W, H) / 640);
+    CX = W / 2; CY = H / 2 + Math.min(24, H * 0.03);
+  }
+  resize();
+  addEventListener('resize', resize);
+  const hw = () => CX / S, hh = () => Math.max(CY, H - CY) / S;
+  const range = () => Math.hypot(W, H) / S;
+
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const angDiff = (a, b) => ((a - b + Math.PI) % TAU + TAU) % TAU - Math.PI;
+  const smooth = t => t * t * (3 - 2 * t);
+
+  let best = 0;
+  try { best = +localStorage.getItem('yogiri-best') || 0; } catch (e) {}
+
+  // ---- audio ----
+  let AC = null, muted = false;
+  function audio() {
+    if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+    if (AC && AC.state === 'suspended') AC.resume();
+  }
+  function tone(f, d, type = 'sine', v = 0.12, f2) {
+    if (!AC || muted) return;
+    const t = AC.currentTime, o = AC.createOscillator(), g = AC.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t);
+    if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + d);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(v, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g).connect(AC.destination); o.start(t); o.stop(t + d + 0.05);
+  }
+  function noise(d, v) {
+    if (!AC || muted) return;
+    const t = AC.currentTime, len = Math.floor(AC.sampleRate * d), buf = AC.createBuffer(1, len, AC.sampleRate), ch = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) ch[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const src = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain();
+    src.buffer = buf; f.type = 'lowpass'; f.frequency.value = 700; g.gain.value = v;
+    src.connect(f).connect(g).connect(AC.destination); src.start(t);
+  }
+
+  // ---- world ----
+  let state = 'attract', paused = false, T = 0, shake = 0;
+  let ships = [], rocks = [], parts = [], texts = [];
+  let beamA = -Math.PI / 2, targetA = beamA, keyDir = 0;
+  let score = 0, shipsIn = 0, wrecks = 0, flares = 2, flareT = 0, spawnT = 1, hourIdx = 0, nextId = 0;
+
+  const island = Array.from({ length: 16 }, (_, i) => {
+    const a = i / 16 * TAU, r = IR * rnd(0.86, 1.1);
+    return [Math.cos(a) * r, Math.sin(a) * r];
+  });
+  const fog = Array.from({ length: 8 }, () => ({ x: rnd(-600, 600), y: rnd(-500, 500), r: rnd(140, 280), vx: rnd(6, 16) * (Math.random() < 0.5 ? -1 : 1), a: rnd(0.06, 0.12) }));
+
+  function addRock() {
+    for (let k = 0; k < 80; k++) {
+      const r = rnd(12, 27);
+      const x = rnd(-1, 1) * (hw() - r - 20), y = rnd(-1, 1) * (hh() - r - 20);
+      if (Math.hypot(x, y) < IR + r + 60) continue;
+      if (rocks.some(o => Math.hypot(o.x - x, o.y - y) < o.r + r + 34)) continue;
+      if (ships.some(s => Math.hypot(s.x - x, s.y - y) < r + 80)) continue;
+      const n = 8 + (Math.random() * 4 | 0), pts = [];
+      for (let i = 0; i < n; i++) {
+        const a = i / n * TAU + rnd(-0.2, 0.2), rr = r * rnd(0.72, 1.08);
+        pts.push([Math.cos(a) * rr, Math.sin(a) * rr]);
+      }
+      rocks.push({ x, y, r, pts, reveal: 0, hint: rnd(1, 6), hintT: 0 });
+      return;
+    }
+  }
+
+  function spawnShip() {
+    const a = Math.random() * TAU, c = Math.cos(a), s = Math.sin(a);
+    const t = Math.min((hw() + 24) / Math.max(1e-6, Math.abs(c)), (hh() + 24) / Math.max(1e-6, Math.abs(s)));
+    const big = Math.random() < 0.2 + 0.18 * (T / DUR);
+    ships.push({
+      id: nextId++, x: c * t, y: s * t, ang: a + Math.PI + rnd(-0.18, 0.18),
+      big, r: big ? 11 : 6, sp: big ? 27 : 44, turn: big ? 1.3 : 2.6, pts: big ? 3 : 1, lit: 0, dead: false
+    });
+  }
+
+  function reset() {
+    ships = []; parts = []; texts = []; rocks = [];
+    T = 0; score = 0; shipsIn = 0; wrecks = 0; flares = 2; flareT = 0; spawnT = 0.8; hourIdx = 0;
+    for (let i = 0; i < 9; i++) addRock();
+  }
+
+  function isLit(x, y, r) {
+    if (flareT > 0) return true;
+    const d = Math.hypot(x, y);
+    if (d < IR + 52) return true;
+    if (d > range()) return false;
+    return Math.abs(angDiff(Math.atan2(y, x), beamA)) < HALF + r / d;
+  }
+
+  let bannerTimer = 0;
+  function banner(msg) {
+    const b = $('banner'); b.textContent = msg; b.classList.add('show');
+    clearTimeout(bannerTimer); bannerTimer = setTimeout(() => b.classList.remove('show'), 2600);
+  }
+
+  function burst(x, y, n, kind, col) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * TAU, v = rnd(10, kind === 'plank' ? 50 : 90);
+      parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: rnd(0.6, 1.4), max: 1.4, kind, col, rot: Math.random() * TAU });
+    }
+  }
+
+  function fireFlare() {
+    if (state !== 'play' || paused || flares <= 0 || flareT > 0) return;
+    flares--; flareT = 2.4;
+    for (const s of ships) s.lit = LIT_MEM + 1;
+    tone(420, 0.9, 'sine', 0.08, 1500);
+  }
+
+  function clockStr() {
+    const mins = 22 * 60 + Math.floor(Math.min(T, DUR) / DUR * HOURS * 6) * 10;
+    return String(Math.floor(mins / 60) % 24).padStart(2, '0') + ':' + String(mins % 60).padStart(2, '0');
+  }
+
+  // ---- update ----
+  function update(dt) {
+    const playing = state === 'play';
+    if (playing) T += dt;
+    flareT = Math.max(0, flareT - dt);
+    shake = Math.max(0, shake - dt);
+
+    if (!playing) beamA += 0.55 * dt;
+    else if (keyDir) { beamA += keyDir * 2.8 * dt; targetA = beamA; }
+    else beamA += clamp(angDiff(targetA, beamA), -ROT * dt, ROT * dt);
+
+    if (playing) {
+      const h = Math.floor(T / (DUR / HOURS));
+      while (hourIdx < h && hourIdx < HOURS - 1) {
+        hourIdx++;
+        addRock();
+        let msg = `${clockStr()}  潮が引き、岩がひとつ増えた`;
+        if (hourIdx % 2 === 0 && flares < 3) { flares++; msg += ' ・ 照明弾 +1'; }
+        banner(msg);
+        tone(1320, 0.5, 'sine', 0.04); setTimeout(() => tone(1320, 0.5, 'sine', 0.03), 260);
+      }
+    }
+
+    spawnT -= dt;
+    if (spawnT <= 0) {
+      spawnShip();
+      const p = T / DUR;
+      spawnT = (playing ? 3.3 - 2.15 * p : 2.6) * rnd(0.7, 1.3);
+    }
+
+    for (const r of rocks) {
+      r.reveal = Math.max(0, r.reveal - dt);
+      r.hintT = Math.max(0, r.hintT - dt);
+      r.hint -= dt;
+      if (r.hint <= 0) { r.hintT = 0.9; r.hint = rnd(3, 9); }
+    }
+
+    for (const s of ships) {
+      s.lit = Math.max(0, s.lit - dt);
+      if (isLit(s.x, s.y, s.r)) s.lit = Math.max(s.lit, LIT_MEM);
+      const d = Math.hypot(s.x, s.y);
+      let dx = -s.x / d, dy = -s.y / d;
+      if (s.lit > 0) {
+        const hx = Math.cos(s.ang), hy = Math.sin(s.ang), nx = -hy, ny = hx, look = 110 + s.r * 4;
+        for (const r of rocks) {
+          const rx = r.x - s.x, ry = r.y - s.y, t = rx * hx + ry * hy;
+          if (t < -r.r || t > look) continue;
+          const lat = rx * nx + ry * ny, clear = r.r + s.r + 16;
+          if (Math.abs(lat) >= clear) continue;
+          const w = (1 - Math.max(0, t) / look) * (1 - Math.abs(lat) / clear) * 5 + 0.6;
+          const side = Math.abs(lat) < 1 ? (s.id % 2 ? 1 : -1) : (lat > 0 ? -1 : 1);
+          dx += nx * side * w; dy += ny * side * w;
+        }
+      }
+      const turn = s.turn * (s.lit > 0 ? 1.6 : 1);
+      s.ang += clamp(angDiff(Math.atan2(dy, dx), s.ang), -turn * dt, turn * dt);
+      const sp = s.sp * (s.lit > 0 ? 1 : 0.9);
+      s.x += Math.cos(s.ang) * sp * dt; s.y += Math.sin(s.ang) * sp * dt;
+
+      if (d < IR + s.r + 3) {
+        s.dead = true;
+        parts.push({ x: s.x, y: s.y, life: 0.9, max: 0.9, kind: 'ring', r: s.r });
+        if (playing) {
+          score += s.pts; shipsIn++;
+          texts.push({ x: s.x, y: s.y - 14, t: 1.3, msg: '+' + s.pts, col: LAMP });
+          tone(s.big ? 147 : 220, 0.55, 'triangle', 0.1);
+          if (s.big) setTimeout(() => tone(110, 0.8, 'triangle', 0.1), 180);
+        }
+        continue;
+      }
+      for (const r of rocks) {
+        if (Math.hypot(r.x - s.x, r.y - s.y) < r.r * 0.86 + s.r * 0.7) {
+          s.dead = true; r.reveal = 6;
+          burst(s.x, s.y, 14, 'spark', SIGNAL);
+          burst(s.x, s.y, 8, 'plank', '150,110,70');
+          if (playing) {
+            wrecks++;
+            texts.push({ x: s.x, y: s.y - 16, t: 1.6, msg: '座礁', col: SIGNAL });
+            noise(0.7, 0.45); tone(90, 0.6, 'sawtooth', 0.06, 40);
+            if (!RM) shake = 0.35;
+          }
+          break;
+        }
+      }
+    }
+    ships = ships.filter(s => !s.dead);
+
+    for (const p of parts) {
+      p.life -= dt;
+      if (p.vx !== undefined) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.96; p.vy *= 0.96; p.rot += dt * 2; }
+    }
+    parts = parts.filter(p => p.life > 0);
+    for (const t of texts) { t.t -= dt; t.y -= 18 * dt; }
+    texts = texts.filter(t => t.t > 0);
+
+    const fogV = RM ? 0.25 : 1;
+    for (const f of fog) {
+      f.x += f.vx * dt * fogV;
+      const lim = hw() + f.r;
+      if (f.x > lim) f.x = -lim; else if (f.x < -lim) f.x = lim;
+    }
+
+    if (playing) {
+      if (wrecks >= MAXW) endGame(false);
+      else if (T >= DUR) endGame(true);
+    }
+  }
+
+  // ---- draw ----
+  function mix(a, b, k) { return a.map((v, i) => Math.round(v + (b[i] - v) * k)); }
+  function rockPath(r) {
+    ctx.beginPath();
+    r.pts.forEach(([x, y], i) => i ? ctx.lineTo(r.x + x, r.y + y) : ctx.moveTo(r.x + x, r.y + y));
+    ctx.closePath();
+  }
+  function drawRock(r, alpha, lit) {
+    ctx.globalAlpha = alpha;
+    rockPath(r);
+    ctx.fillStyle = lit ? '#4a4538' : '#26333a';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = lit ? `rgba(${HOT},.75)` : `rgba(${FOAM},.4)`;
+    ctx.stroke();
+    ctx.beginPath(); ctx.arc(r.x, r.y, r.r + 6, 0, TAU);
+    ctx.setLineDash([4, 7]); ctx.strokeStyle = `rgba(${FOAM},.35)`; ctx.lineWidth = 1.2; ctx.stroke(); ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+  }
+  function conePath(R, half) {
+    ctx.moveTo(0, 0); ctx.arc(0, 0, R, beamA - half, beamA + half); ctx.closePath();
+  }
+
+  function draw() {
+    const p = T / DUR, dawn = state === 'play' || state === 'over' ? smooth(clamp((p - 0.82) / 0.18, 0, 1)) : 0;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    const c1 = mix([16, 40, 52], [70, 102, 116], dawn), c2 = mix([5, 15, 22], [38, 60, 72], dawn);
+    const bg = ctx.createRadialGradient(CX, CY, 0, CX, CY, Math.hypot(W, H) / 2);
+    bg.addColorStop(0, `rgb(${c1})`); bg.addColorStop(1, `rgb(${c2})`);
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    const sx = shake > 0 ? rnd(-6, 6) * shake / 0.35 : 0, sy = shake > 0 ? rnd(-6, 6) * shake / 0.35 : 0;
+    ctx.setTransform(DPR * S, 0, 0, DPR * S, DPR * (CX + sx), DPR * (CY + sy));
+    const HW = hw() + 40, HH = hh() + 40, R = range(), now = performance.now() / 1000;
+
+    // swell
+    ctx.lineWidth = 1.4; ctx.strokeStyle = `rgba(${FOAM},.05)`; ctx.setLineDash([22, 46]);
+    ctx.lineDashOffset = -now * (RM ? 3 : 14);
+    for (let y = -HH, row = 0; y < HH; y += 44, row++) {
+      ctx.beginPath();
+      for (let x = -HW; x <= HW; x += 30) {
+        const yy = y + Math.sin(x * 0.018 + now * (RM ? 0.15 : 0.6) + row * 1.7) * 5;
+        x === -HW ? ctx.moveTo(x, yy) : ctx.lineTo(x, yy);
+      }
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    // rocks you can see without the beam: breaking foam hints, wrecks, flare, dawn
+    for (const r of rocks) {
+      if (r.hintT > 0) {
+        const k = Math.sin(Math.PI * r.hintT / 0.9) * 0.28;
+        ctx.strokeStyle = `rgba(${FOAM},${k})`; ctx.lineWidth = 2;
+        const a0 = (r.x * 7 + r.y) % TAU;
+        ctx.beginPath(); ctx.arc(r.x, r.y, r.r + 5, a0, a0 + 1.1); ctx.stroke();
+        ctx.beginPath(); ctx.arc(r.x, r.y, r.r + 9, a0 + 2.6, a0 + 3.3); ctx.stroke();
+      }
+      const a = Math.max(Math.min(1, r.reveal / 2), flareT > 0 ? Math.min(1, flareT / 1.2) : 0, dawn * 0.85);
+      if (a > 0.01) drawRock(r, a, false);
+    }
+
+    // beam
+    const beamK = 1 - dawn * 0.7;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    let g = ctx.createRadialGradient(0, 0, 10, 0, 0, R * 0.85);
+    g.addColorStop(0, `rgba(${LAMP},${0.42 * beamK})`); g.addColorStop(0.45, `rgba(${LAMP},${0.14 * beamK})`); g.addColorStop(1, `rgba(${LAMP},0)`);
+    ctx.fillStyle = g; ctx.beginPath(); conePath(R, HALF); ctx.fill();
+    g = ctx.createRadialGradient(0, 0, 10, 0, 0, R * 0.6);
+    g.addColorStop(0, `rgba(${HOT},${0.3 * beamK})`); g.addColorStop(1, `rgba(${HOT},0)`);
+    ctx.fillStyle = g; ctx.beginPath(); conePath(R, HALF * 0.35); ctx.fill();
+    g = ctx.createRadialGradient(0, 0, IR, 0, 0, IR + 60);
+    g.addColorStop(0, `rgba(${LAMP},${0.16 * beamK})`); g.addColorStop(1, `rgba(${LAMP},0)`);
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, IR + 60, 0, TAU); ctx.fill();
+    ctx.restore();
+
+    // rocks inside the light
+    ctx.save();
+    ctx.beginPath(); conePath(R, HALF); ctx.moveTo(IR + 52, 0); ctx.arc(0, 0, IR + 52, 0, TAU);
+    ctx.clip();
+    for (const r of rocks) drawRock(r, 1, true);
+    ctx.restore();
+
+    // ships
+    for (const s of ships) {
+      ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.ang);
+      const r = s.r, lit = s.lit > 0;
+      ctx.strokeStyle = `rgba(${FOAM},.18)`; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(-r * 1.2, r * 0.5); ctx.lineTo(-r * 5, r * 2); ctx.moveTo(-r * 1.2, -r * 0.5); ctx.lineTo(-r * 5, -r * 2); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(r * 1.7, 0);
+      ctx.quadraticCurveTo(r * 0.6, r * 0.95, -r * 1.25, r * 0.75);
+      ctx.lineTo(-r * 1.25, -r * 0.75);
+      ctx.quadraticCurveTo(r * 0.6, -r * 0.95, r * 1.7, 0);
+      ctx.fillStyle = lit ? '#e6d3a8' : '#3a4f57'; ctx.fill();
+      if (s.big) {
+        ctx.fillStyle = lit ? '#b4553f' : '#4b5b61';
+        for (let i = 0; i < 3; i++) ctx.fillRect(-r * 0.95 + i * r * 0.62, -r * 0.42, r * 0.5, r * 0.84);
+      }
+      ctx.restore();
+      if (s.lit > 0) {
+        ctx.strokeStyle = `rgba(${LAMP},${Math.min(1, s.lit / LIT_MEM) * 0.75})`; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(s.x, s.y, r * 2.5 + 4, 0, TAU); ctx.stroke();
+      }
+    }
+
+    // island and tower
+    ctx.beginPath(); island.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath();
+    ctx.fillStyle = '#2f3a33'; ctx.fill();
+    ctx.strokeStyle = `rgba(${FOAM},.45)`; ctx.lineWidth = 2; ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, 11, 0, TAU); ctx.fillStyle = '#e8e2d4'; ctx.fill();
+    ctx.beginPath(); ctx.arc(0, 0, 11, 0, TAU); ctx.strokeStyle = '#b4553f'; ctx.lineWidth = 3; ctx.stroke();
+
+    // fog
+    const fogK = 1 - dawn;
+    for (const f of fog) {
+      const fg = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r);
+      fg.addColorStop(0, `rgba(170,196,202,${f.a * fogK})`); fg.addColorStop(1, 'rgba(170,196,202,0)');
+      ctx.fillStyle = fg; ctx.fillRect(f.x - f.r, f.y - f.r, f.r * 2, f.r * 2);
+    }
+
+    // lamp and running lights sit above the fog
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    g = ctx.createRadialGradient(0, 0, 0, 0, 0, 34);
+    g.addColorStop(0, `rgba(${HOT},.95)`); g.addColorStop(0.25, `rgba(${LAMP},.5)`); g.addColorStop(1, `rgba(${LAMP},0)`);
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 34, 0, TAU); ctx.fill();
+    for (const s of ships) {
+      const bx = s.x - Math.cos(s.ang) * s.r * 0.4, by = s.y - Math.sin(s.ang) * s.r * 0.4;
+      const lg = ctx.createRadialGradient(bx, by, 0, bx, by, 10);
+      lg.addColorStop(0, 'rgba(255,236,190,.95)'); lg.addColorStop(1, 'rgba(255,236,190,0)');
+      ctx.fillStyle = lg; ctx.beginPath(); ctx.arc(bx, by, 10, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+
+    // effects
+    for (const p of parts) {
+      const k = p.life / p.max;
+      if (p.kind === 'ring') {
+        ctx.strokeStyle = `rgba(${LAMP},${k})`; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r + (1 - k) * 26, 0, TAU); ctx.stroke();
+      } else if (p.kind === 'spark') {
+        ctx.fillStyle = `rgba(${p.col},${k})`; ctx.beginPath(); ctx.arc(p.x, p.y, 1.8, 0, TAU); ctx.fill();
+      } else {
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        ctx.fillStyle = `rgba(${p.col},${Math.min(1, k * 1.5)})`; ctx.fillRect(-4, -1, 8, 2.2); ctx.restore();
+      }
+    }
+    ctx.textAlign = 'center';
+    ctx.font = '700 17px "Zen Kaku Gothic New", "Hiragino Sans", sans-serif';
+    for (const t of texts) { ctx.fillStyle = `rgba(${t.col},${Math.min(1, t.t)})`; ctx.fillText(t.msg, t.x, t.y); }
+
+    if (flareT > 0) {
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      ctx.fillStyle = `rgba(${HOT},${Math.pow(flareT / 2.4, 3) * 0.4})`; ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  // ---- HUD ----
+  const cache = {};
+  function setText(id, v) { if (cache[id] !== v) { cache[id] = v; $(id).textContent = v; } }
+  function hud() {
+    setText('clock', clockStr());
+    setText('score', String(score));
+    setText('flareN', String(flares));
+    const pips = $('pips').children;
+    for (let i = 0; i < MAXW; i++) pips[i].classList.toggle('on', i < wrecks);
+    $('flareBtn').disabled = state !== 'play' || flares <= 0;
+  }
+
+  // ---- flow ----
+  function startGame() {
+    audio();
+    reset();
+    state = 'play'; paused = false;
+    targetA = beamA;
+    $('overlay').hidden = true; $('hud').hidden = false;
+    banner('22:00  当直開始');
+    tone(330, 0.4, 'sine', 0.06); setTimeout(() => tone(440, 0.6, 'sine', 0.06), 160);
+  }
+
+  function endGame(win) {
+    state = 'over';
+    const isBest = score > best;
+    if (isBest) { best = score; try { localStorage.setItem('yogiri-best', String(best)); } catch (e) {} }
+    $('eyebrow').textContent = win ? '05:00 ・ 夜明け' : `${clockStr()} ・ 三隻目の座礁`;
+    $('title').textContent = win ? '朝が来た' : '灯台守、解任';
+    $('lead').innerHTML = (win
+      ? `霧が晴れた。一晩で <b>${shipsIn}隻</b> を港へ導いた。得点 <b>${score}</b>。`
+      : `<b>${shipsIn}隻</b> を港へ導いたが、夜明けまで持たなかった。得点 <b>${score}</b>。`)
+      + (isBest && score > 0 ? ' <span class="newbest">最高得点を更新</span>' : '');
+    $('rules').hidden = true;
+    $('startBtn').textContent = 'もう一晩';
+    $('best').textContent = best || '—';
+    $('overlay').hidden = false;
+    $('startBtn').focus({ preventScroll: true });
+    if (win) { tone(392, 0.6, 'sine', 0.07); setTimeout(() => tone(523, 0.9, 'sine', 0.07), 220); }
+    else { tone(196, 0.9, 'triangle', 0.08, 98); }
+  }
+
+  // ---- input ----
+  function aim(e) {
+    if (state !== 'play') return;
+    const dx = e.clientX - CX, dy = e.clientY - CY;
+    if (dx * dx + dy * dy > 100) targetA = Math.atan2(dy, dx);
+  }
+  cv.addEventListener('pointermove', aim);
+  cv.addEventListener('pointerdown', aim);
+  addEventListener('keydown', e => {
+    if (e.key === 'ArrowLeft' || e.key === 'a') keyDir = -1;
+    else if (e.key === 'ArrowRight' || e.key === 'd') keyDir = 1;
+    else if (e.code === 'Space' && state === 'play') { e.preventDefault(); fireFlare(); }
+    else if ((e.key === 'p' || e.key === 'Escape') && state === 'play') {
+      paused = !paused;
+      banner(paused ? '一時停止中 ・ P で再開' : '再開');
+    }
+  });
+  addEventListener('keyup', e => {
+    if ((e.key === 'ArrowLeft' || e.key === 'a') && keyDir < 0) keyDir = 0;
+    if ((e.key === 'ArrowRight' || e.key === 'd') && keyDir > 0) keyDir = 0;
+  });
+  $('flareBtn').addEventListener('click', e => { fireFlare(); e.currentTarget.blur(); });
+  $('soundBtn').addEventListener('click', e => {
+    muted = !muted; e.currentTarget.textContent = muted ? '音 OFF' : '音 ON'; e.currentTarget.blur();
+  });
+  $('startBtn').addEventListener('click', startGame);
+  $('best').textContent = best || '—';
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && state === 'play' && !paused) { paused = true; banner('一時停止中 ・ P で再開'); }
+  });
+
+  // ---- loop ----
+  reset();
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (!paused) update(dt);
+    draw(); hud();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
